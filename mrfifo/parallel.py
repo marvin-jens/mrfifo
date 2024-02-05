@@ -1,8 +1,8 @@
-import logging
 import time
-from contextlib import contextmanager
-from contrib import __version__, __author__, __license__, __email__
+from .contrib import __version__, __author__, __license__, __email__
 
+import logging
+from contextlib import contextmanager
 def log_qerr(qerr):
     "helper function for reporting errors in sub processes"
     for name, lines in qerr:
@@ -57,56 +57,8 @@ class ExceptionLogging:
                 self.exc_flag.value = True
 
 
-@contextmanager
-def create_named_pipes(names):
-    import os
-    import tempfile
-    with tempfile.TemporaryDirectory() as base:
-        paths = [os.path.join(base, name) for name in names]
-        #print(paths)
-        # create new fifos (named pipes)
-        [os.mkfifo(fname) for fname in paths]
 
-        try:
-            yield paths
-        finally:
-            # Clean up the named pipes
-            for fname in paths:
-                os.remove(fname)
-
-def open_named_pipe(path, mode='rt+', buffer_size=1000000):
-    import fcntl
-    F_SETPIPE_SZ = 1031  # Linux 2.6.35+
-    # F_GETPIPE_SZ = 1032  # Linux 2.6.35+
-
-    fifo_fd = open(path, mode)
-    fcntl.fcntl(fifo_fd, F_SETPIPE_SZ, buffer_size)
-    return fifo_fd
-
-def igzip_reader(input_files, pipe):
-    with ExceptionLogging("spacemake.parallel.igzip_reader") as el:
-        el.logger.info(f"writing to {pipe}")
-        from isal import igzip
-        out_file = open_named_pipe(pipe, mode='wb')
-
-        try:
-            for fname in input_files:
-                el.logger.info(f"reading from {fname}")
-                in_file = igzip.IGzipFile(fname, 'r')
-                while True:
-                    block = in_file.read(igzip.READ_BUFFER_SIZE)
-                    if block == b"":
-                        break
-
-                    out_file.write(block)
-                
-                in_file.close()
-        finally:
-            el.logger.info(f"closing down {pipe}")
-            out_file.close()
-
-#import pyximport; pyximport.install()
-import fast_loops
+# This should go to 'parts' or a few example implementations
 
 def fastq_distributor(in_pipe, worker_in_pipes):
     with ExceptionLogging("spacemake.parallel.fastq_distributor") as el:
@@ -489,19 +441,6 @@ def parallel_BAM_workflow(bam_inputs, worker_func, collector_func, log_domain="s
     
         return stats
     
-
-
-def batched(iterable, n):
-    "Batch data into lists of length n. The last batch may be shorter."
-    from itertools import islice
-    # batched('ABCDEFG', 3) --> ABC DEF G
-    it = iter(iterable)
-    while True:
-        batch = list(islice(it, n))
-        if not batch:
-            return
-        yield batch
-
 
     
 if __name__ == "__main__":
