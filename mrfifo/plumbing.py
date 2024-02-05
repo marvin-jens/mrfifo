@@ -7,15 +7,20 @@ from contextlib import contextmanager
 @contextmanager
 def create_named_pipes(names):
     import os
+    import logging
     import tempfile
+    path_dict = {}
+    path_lookup = {}
+    logger = logging.getLogger("mrfifo.plumbing.create_named_pipes")
     with tempfile.TemporaryDirectory() as base:
         paths = [os.path.join(base, name) for name in names]
-        #print(paths)
-        # create new fifos (named pipes)
-        [os.mkfifo(fname) for fname in paths]
-
+        for fname in paths:
+            if os.path.exists(fname):
+                logger.warning(f"can not create fifo because file already exists '{fname}'")
+            else:
+                os.mkfifo(fname)
         try:
-            yield paths
+            yield dict(zip(names, paths))
         finally:
             # Clean up the named pipes
             for fname in paths:
