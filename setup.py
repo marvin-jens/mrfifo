@@ -1,7 +1,7 @@
 from setuptools import setup, Extension
 from Cython.Build import cythonize
 from Cython.Compiler import Options
-import numpy
+# import numpy
 
 # These are optional
 Options.docstrings = True
@@ -11,7 +11,7 @@ Options.annotate = False
 extensions = [
     Extension(
         "mrfifo.fast_loops",
-        ["mrfifo/fast_loops.pyx"], include_dirs=[numpy.get_include()],
+        ["mrfifo/fast_loops.pyx"], #include_dirs=[numpy.get_include()],
     ),
     # Extension(
     #     "spacemake.cython.fastread",
