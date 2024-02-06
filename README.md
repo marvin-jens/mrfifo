@@ -3,8 +3,8 @@ Map-Reduce parallelism over FIFOs (named pipes)
 
 # Abstract
 
-Some problems in bioinformatics are easily parallelizable but require high throughput. The multiprocessing module primitives (Queue, Pipe, etc.) however suffer from significant overhead and can become a severe bottleneck.
-Mr. FIFO provides a few very low overhead function primitives (implemented in Cython) that exploit the time-tested and extremely optimized inter-process communication framework known as `named pipes` or FIFOs (first-in first-out).
+Some problems in bioinformatics can very nicely be implemented in python, are easily parallelizable, but require high throughput. The python multiprocessing module primitives (Queue, Pipe, etc.) however suffer from significant overhead and can become a severe bottleneck.
+Mr. FIFO provides few very low overhead function primitives (implemented in Cython) that exploit the time-tested and extremely optimized inter-process communication framework known as *named pipes* or FIFOs (first-in first-out).
 
 # Install
 
@@ -101,7 +101,7 @@ The example above actually creates a number of sub-processes:
 
  # API
 
- Under the hood, the workflow creates `mrfifo.Job` instances for each process. These are thin wrappers around `mutliprocessing.Process`, which allow to keep track of the inputs and outputs. `func` is a callable that must at least accept the following named arguments `inputs:Iterable, outputs:Iterable` and `name:str`. Everything else is passed via `argc` and `kwargs`. The API to compose the workflow consists of useful shorthands to create meaningfully different jobs. But there may be different ways to combine code with the offered primitives. The logic is as follows:
+ Under the hood, the workflow creates `mrfifo.Job` instances for each process. These are thin wrappers around `mutliprocessing.Process`, which allow to keep track of the inputs and outputs. `func` is a callable that must at least accept the following named arguments `inputs:Sequence, outputs:Sequence` and `name:str`. Everything else is passed via `argc` and `kwargs`. The API to compose the workflow consists of useful shorthands to create meaningfully different jobs. But there may be different ways to combine code with the offered primitives. The currently proposrf logic is as follows:
 
  ## .reader
 
@@ -109,12 +109,12 @@ The example above actually creates a number of sub-processes:
 
  ## .distribute
 
-A distributor splits an input into multiple outputs by rotating them. The default distributor is implemented in cython, tries to allocate large pipe buffers and has low overhead.
-For more complex input streams, it offers detection and separate treatment of a header. The header can either be broadcast to each of the outputs, or sent to a dedicated output that is exclusively used for the header (see the documentation).
+A distributor splits an input into multiple outputs by cycling through the outputs as it iterates over chunks of input. The default distributor is implemented in cython, tries to allocate large pipe buffers and has low overhead.
+For more complex input streams, it offers detection and separate treatment of a header. The header can either be broadcast to each of the outputs, or sent to a dedicated output that is exclusively used for the header (see the documentation). The code also supports very basic pattern matching and an output lookup mechanism which allows, for example, to split BAM records by the first few bases of the Unique Molecular Identifier (UMI) or Cell Barcode (CB). This is very useful if the downstream workers, *running in parallel* need to ensure that records with the same UMI or CB are always sent to the same worker.
 
 ## .workers
 
-This is the only API function that creates multiple jobs from one call. inputs and outputs are expanded for each worker using the `n` variable in the inputs and outputs argument. If you provide a list of inputs, this list will be replaced with the appropriate list for each worker. For example `inputs=['reads1.dist{n}', 'reads2.dist{n}']` will be expanded to `['reads1.dist0', 'reads2.dist0]` for `worker0` *etc.*. This allows to route multiple inputs in into workers but keeping the inputs in sync.
+This is the only API function that creates multiple jobs from one call. inputs and outputs are expanded for each worker using the `n` variable in the inputs and outputs argument. If you provide a list of inputs, this list will be replaced with the appropriate list for each worker. For example `inputs=['reads1.dist{n}', 'reads2.dist{n}']` will be expanded to `['reads1.dist0', 'reads2.dist0]` for `worker0` *etc.*. This allows to route multiple inputs into workers but keeping the inputs in sync.
 
 ## .collect
 
