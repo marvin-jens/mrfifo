@@ -8,7 +8,17 @@ from libc cimport stdlib, stdio
 from libc.string cimport memcpy, strstr, strcpy
 from typing import TextIO
 
-def distribute(str fin_name, list fifo_names, int chunk_size=10000, size_t in_buf_size=2**20, size_t out_buf_size=2**19, header_detect_func=None, header_fifo=None, header_broadcast=False):
+def distribute(str fin_name, list fifo_names, int chunk_size=10000, 
+               size_t in_buf_size=2**20, size_t out_buf_size=2**19, 
+               header_detect_func=None, header_fifo="", 
+               header_broadcast=False):
+
+    if header_fifo == 0:
+        # special mode: use the first fifo name for header data and the other
+        # as round-robin outputs as usual
+        header_fifo = fifo_names[0]
+        fifo_names = fifo_names[1:]
+
     cdef size_t i = 0
     cdef size_t j = 0
     cdef size_t n_outs = len(fifo_names)
@@ -35,7 +45,8 @@ def distribute(str fin_name, list fifo_names, int chunk_size=10000, size_t in_bu
         stdio.setvbuf(fifos[i], fifo_buffers[i], stdio._IOFBF, out_buf_size)
 
     if header_detect_func:
-        # if the input stream contains some special header lines, allow to detect these and write them to a separate header-fifo
+        # if the input stream contains some special header lines, allow to detect 
+        # these and write them to a separate header-fifo
         if header_fifo:
             fheader = stdio.fopen(header_fifo.encode('utf-8'), 'w')
 
@@ -46,6 +57,7 @@ def distribute(str fin_name, list fifo_names, int chunk_size=10000, size_t in_bu
             
             if header_detect_func(bytes(buffer).decode("ascii")):
                 if header_fifo:
+                    # print("writing to fifo header")
                     stdio.fwrite(buffer, n_read, 1, fheader)
                 if header_broadcast:
                     for i in range(n_outs):

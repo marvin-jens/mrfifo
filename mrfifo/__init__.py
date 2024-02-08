@@ -84,8 +84,13 @@ class Workflow():
 
         return self
 
-    def distribute(self, *argc, input=None, output_pattern=None, n=4, func=parts.distributor, job_name="{workflow}.dist{n}", **kwargs):
-        job = Job(func, [input], [output_pattern.format(n=i) for i in range(n) ], argc=argc, kwargs=kwargs,
+    def distribute(self, *argc, input=None, output_pattern=None, n=4, output_header="", func=parts.distributor, job_name="{workflow}.dist{n}", **kwargs):
+        outputs = [output_pattern.format(n=i) for i in range(n) ]
+        if output_header:
+            outputs.insert(0, output_header)
+            kwargs['header_fifo'] = 0 # indicate that first output is for header data
+
+        job = Job(func, [input], outputs, argc=argc, kwargs=kwargs,
                   name=self.render_job_name(job_name))
 
         self.register_job_inputs(job)

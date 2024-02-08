@@ -27,7 +27,12 @@ def igzip_reader(inputs, outputs, name='mrfifo.igzip_reader'):
             el.logger.info(f"closing down {pipe}")
             out_file.close()
 
-def bam_reader(input_file, pipe, threads=2, name="mrfifo.parts.bam_reader"):
+def bam_reader(inputs, outputs, threads=2, name="mrfifo.parts.bam_reader"):
+    assert len(outputs) == 1
+    pipe = outputs.pop()
+    assert len(inputs) == 1
+    input_file = inputs.pop()
+    
     import os
     with ExceptionLogging(name) as el:
         os.system(f'samtools view -Sh --no-PG --threads={threads} {input_file} > {pipe}')

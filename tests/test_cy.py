@@ -200,9 +200,6 @@ def test_dist_work_funnel_count():
 
 
 def test_dist_work_collect_funnel():
-    input_files = ["../spacemake/test_data/reads_chr22_R1.fastq.gz"]
-    # TODO: create_named_pipes dict support
-
     w = (
         mf.Workflow('simple_fastq_line_counter')
         .reader(
@@ -239,6 +236,83 @@ def test_dist_work_collect_funnel():
     w.run(dry_run=False)
 
 
+def header_checker(inputs=[], outputs=[], name="bla", **kwargs):
+    assert len(inputs) == 1
+    sam_in = inputs.pop()
+    header = []
+    n_bam_records = 0
+    for line in open(sam_in):
+        if line.startswith('@'):
+            header.append(line)
+        else:
+            n_bam_records += 1
+    
+    for x in header:
+        print(x.rstrip())
+
+    print(f"worker {name} received {len(header)} header records and {n_bam_records} BAM records")
+
+
+def is_header(line):
+    return line.startswith('@')
+
+def test_header_broadcast():
+    
+    w = (
+        mf.Workflow('BAM_header_checker')
+        .reader(
+            inputs = ["test_data/tiny_test.bam"],
+            inputs_are_files=True,
+            func=mf.parts.bam_reader,
+            outputs=["input.SAM"],
+        )
+        .distribute(
+            input="input.SAM",
+            output_pattern="SAM.dist{n}",
+            n=4, chunk_size=1,
+            header_detect_func=is_header,
+            header_broadcast=True,
+        )
+        .workers(
+            inputs=["SAM.dist{n}"],
+            func=header_checker,
+            n=4,
+            outputs=[],
+        )
+    )
+    w.run()
+
+
+def test_header_fifo():
+    
+    w = (
+        mf.Workflow('BAM_header_checker')
+        .reader(
+            inputs = ["test_data/tiny_test.bam"],
+            inputs_are_files=True,
+            func=mf.parts.bam_reader,
+            outputs=["input.SAM"],
+        )
+        .distribute(
+            input="input.SAM",
+            output_pattern="SAM.dist{n}",
+            output_header="SAM.header",
+            n=4, chunk_size=1,
+            header_detect_func=is_header,
+        )
+        .workers(
+            inputs=["SAM.dist{n}"],
+            func=header_checker,
+            n=4,
+            outputs=[],
+        )
+        .funnel(
+            inputs=["SAM.header"],
+            func=header_checker
+        )
+    )
+    w.run()
+
 if __name__ == "__main__":
     import logging
     logging.basicConfig(level=logging.DEBUG)
@@ -249,3 +323,6 @@ if __name__ == "__main__":
     # test_dist_work_funnel()
     # test_dist_work_funnel_count()
     # test_dist_work_collect_funnel()
+    # test_header_broadcast()
+    # test_header_fifo()
+
