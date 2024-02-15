@@ -1,5 +1,5 @@
 from .contrib import *
-# import logging
+import logging
 # TODO: proper logging
 from contextlib import contextmanager
 
@@ -31,6 +31,12 @@ def open_named_pipe(path, mode='rt+', buffer_size=1000000):
     F_SETPIPE_SZ = 1031  # Linux 2.6.35+
     # F_GETPIPE_SZ = 1032  # Linux 2.6.35+
 
+    logger = logging.getLogger('mrfifo.plumbing.open_named_pipes')
+    logger.debug(f"opening pipe '{path}' with mode='{mode}'")
     fifo_fd = open(path, mode)
-    fcntl.fcntl(fifo_fd, F_SETPIPE_SZ, buffer_size)
+    try:
+        fcntl.fcntl(fifo_fd, F_SETPIPE_SZ, buffer_size)
+    except OSError:
+        logger.warning(f"could not set pipe buffer_size={buffer_size} on '{path}'. Is it not a FIFO?")
+
     return fifo_fd
