@@ -5,8 +5,7 @@
 #from types cimport *
 from types import *
 from libc cimport stdlib, stdio
-from libc.string cimport memcpy, strstr, strcpy
-from typing import TextIO
+from libc.string cimport strstr
 
 def distribute(str fin_name, list fifo_names, int chunk_size=10000, 
                size_t in_buf_size=2**20, size_t out_buf_size=2**19, 
@@ -99,10 +98,21 @@ def distribute(str fin_name, list fifo_names, int chunk_size=10000,
     return n # number of lines distributed (excluding header)
 
 
+def distribute_by_substr(str fin_name, list fifo_names, dict sub_lookup,
+                         size_t sub_size, bytes sub_lead=b"\tCB:Z:", 
+                         size_t in_buf_size=2**20, size_t out_buf_size=2**19, 
+                         header_detect_func=None, header_fifo="", 
+                         header_broadcast=False):
 
-def distribute_by_substr(str fin_name, list fifo_names, dict sub_lookup, size_t sub_size, bytes sub_lead=b"\tCB:Z:", size_t in_buf_size=2**20, size_t out_buf_size=2**19, header_detect_func=None, header_fifo=None, header_broadcast=False):
+    if header_fifo == 0:
+        # special mode: use the first fifo name for header data and the other
+        # as round-robin outputs as usual
+        header_fifo = fifo_names[0]
+        fifo_names = fifo_names[1:]
+
     cdef size_t i = 0
     cdef ssize_t j = 0
+
     cdef size_t n_outs = len(fifo_names)
     cdef size_t n = 0
     cdef str line
@@ -169,7 +179,6 @@ def distribute_by_substr(str fin_name, list fifo_names, dict sub_lookup, size_t 
         # extract the \tCB:Z:<cell barcode> value.
         # for more flexibility, we are going to make '\tCB:Z:' variable, 
         # and extract sub_n characters downstream of that
-        
 
         sub_match_c = strstr(buffer, sub_lead_c)
         if sub_match_c is NULL:
@@ -198,9 +207,16 @@ def distribute_by_substr(str fin_name, list fifo_names, dict sub_lookup, size_t 
     return n # number of lines distributed (excluding header)
 
 
+def collect(list fifo_names, str fout_name, int chunk_size=10000, 
+            size_t in_buf_size=2**19, size_t out_buf_size=2**20,
+            header_fifo=""):
 
+    if header_fifo == 0:
+        # special mode: use the first fifo name for header data 
+        # and the other as round-robin inputs as usual
+        header_fifo = fifo_names[0]
+        fifo_names = fifo_names[1:]
 
-def collect(list fifo_names, str fout_name, int chunk_size=10000, size_t in_buf_size=2**19, size_t out_buf_size=2**20, header_fifo=None):
     cdef int i = 0
     cdef int j = 0
     cdef int k = 0
@@ -227,7 +243,8 @@ def collect(list fifo_names, str fout_name, int chunk_size=10000, size_t in_buf_
 
     cdef stdio.FILE *fheader
     if header_fifo:
-        # we have some special, un-multiplexed header data. Read this stuff first and write it to the output
+        # we have some special, un-multiplexed header data. Read this 
+        # stuff first and write it to the output
         fheader = stdio.fopen(header_fifo.encode('utf-8'), 'r')
         while(True):
             n_read = stdio.getline(&buffer, &out_buf_size, fheader) 
