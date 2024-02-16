@@ -1,60 +1,55 @@
 from .contrib import *
 from .parallel import ExceptionLogging
 from .plumbing import open_named_pipe
+import logging
 
-def igzip_reader(inputs, outputs, name='mrfifo.igzip_reader'):
-    assert len(outputs) == 1
-    pipe = outputs.pop()
+def igzip_reader(input_files, out):
+    "ensure that the out pipe is opened in binary mode"
+    assert 'b' in out.mode
+    logger=logging.getLogger('mrfifo.parts.igzip_reader')
+    n_bytes = 0
+    from isal import igzip
+    for fname in input_files:
+        logger.info(f"reading from {fname}")
+        in_file = igzip.IGzipFile(fname, 'r')
+        while True:
+            block = in_file.read(igzip.READ_BUFFER_SIZE)
+            if block == b"":
+                break
 
-    with ExceptionLogging(name) as el:
-        el.logger.info(f"writing to {pipe}")
-        from isal import igzip
-        out_file = open_named_pipe(pipe, mode='wb')
+            out.write(block)
+            n_bytes += len(block)
+        
+        in_file.close()
 
-        try:
-            for fname in inputs:
-                el.logger.info(f"reading from {fname}")
-                in_file = igzip.IGzipFile(fname, 'r')
-                while True:
-                    block = in_file.read(igzip.READ_BUFFER_SIZE)
-                    if block == b"":
-                        break
+    return n_bytes
 
-                    out_file.write(block)
-                
-                in_file.close()
-        finally:
-            el.logger.info(f"closing down {pipe}")
-            out_file.close()
-
-def bam_reader(inputs, outputs, threads=2, name="mrfifo.parts.bam_reader"):
-    assert len(outputs) == 1
-    pipe = outputs.pop()
-    assert len(inputs) == 1
-    input_file = inputs.pop()
-    
+def bam_reader(bam_name, out, threads=2, name="mrfifo.parts.bam_reader"):
+    "ensure that the out FIFO is not managed"
+    assert type(out) is str
     import os
-    with ExceptionLogging(name) as el:
-        os.system(f'samtools view -Sh --no-PG --threads={threads} {input_file} > {pipe}')
+    os.system(f'samtools view -Sh --no-PG --threads={threads} {bam_name} > {out}')
 
-def distributor(inputs, outputs, name="mrfifo.parts.distributor", **kw):
-    assert len(inputs) == 1
-    in_pipe = inputs.pop()
-    with ExceptionLogging(name) as el:
-        el.logger.info(f"reading from {in_pipe}, writing to {outputs} kw={kw}")
-        from .fast_loops import distribute
-        distribute(in_pipe, outputs, **kw)
+def distributor(src, outputs, **kw):
+    "ensure that the FIFOs are not managed"
+    assert type(src) is str
+    logger = logging.getLogger("mrfifo.parts.distributor")
+    logger.info(f"reading from {src}, writing to {outputs} kw={kw}")
 
-def collector(inputs, outputs, name="mrfifo.parts.collector", **kw):
-    assert len(inputs) > 0
-    assert len(outputs) == 1
-    out = outputs.pop()
+    from .fast_loops import distribute
+    res = distribute(fin_name=src, fifo_names=outputs, **kw)
+    logger.info("distribution complete")
+    return res
 
-    with ExceptionLogging(name) as el:
-        el.logger.info(f"collecting from '{inputs}', writing to '{out}' kw={kw}")
-        from .fast_loops import collect
-        collect(inputs, out, **kw)
-        el.logger.info("collection complete")
+
+def collector(inputs, out, name="mrfifo.parts.collector", **kw):
+    "ensure that the FIFOs are not managed"
+    logger = logging.getLogger("mrfifo.parts.collector")
+    logger.info(f"collecting from '{inputs}', writing to '{out}' kw={kw}")
+    from .fast_loops import collect
+    res = collect(fifo_names=inputs, fout_name=out, **kw)
+    logger.info("collection complete")
+    return res
 
 def serializer(inputs, outputs, name="mrfifo.parts.serializser", **kw):
     assert len(inputs) > 0

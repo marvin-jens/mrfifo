@@ -1,7 +1,7 @@
 import multiprocessing as mp
 # weirdly needed to avoid tests hanging if run as an entire suite from pytest
 # see: https://github.com/pytest-dev/pytest/issues/11174
-mp.set_start_method("spawn", force=True)
+# mp.set_start_method("spawn", force=True)
 
 import logging
 import pytest
@@ -313,9 +313,49 @@ def test_header_fifo():
     )
     w.run()
 
+import multiprocessing as mp
+
+
+def file_reader(fname, out):
+    n_lines_read = 0
+    for line in open(fname):
+        out.write(line)
+        n_lines_read += 1
+    
+    return n_lines_read
+
+def simple_counter(src):
+    i = 0
+    for line in src:
+        i += 1
+    
+    return i
+
+def pass_through(src, out):
+    i = 0
+    for line in src:
+        i += 1
+        out.write(line)
+    
+    return i
+
 if __name__ == "__main__":
     import logging
     logging.basicConfig(level=logging.DEBUG)
+    print("__main__.simple_counter", simple_counter)
+    w = (
+        mf.Workflow('test')
+        # .reader(func=file_reader, fname="test_data/simple.txt", out=mf.FIFO("text", 'w'))
+        .gz_reader(input_files=["test_data/simple.txt.gz"])
+        .distribute(src=mf.FIFO("input_text", 'rt'), outputs=mf.FIFO("dist{n}", "wt", n=4), chunk_size=1)
+        .workers(func=pass_through, src=mf.FIFO("dist{n}", "rt"), out=mf.FIFO("out{n}", "wt"), n=4)
+        .collect(inputs=mf.FIFO("out{n}", "rt", n=4), out="/dev/stderr", chunk_size=1)
+        .run(dry_run=False)
+    )
+    for jobname, res in w.result_dict.items():
+        print(f"{jobname}\t{res}")
+
+# if __name__ == "__main__":
     # test_plumbing()
     # test_input_output()
     # test_dist()
@@ -325,4 +365,3 @@ if __name__ == "__main__":
     # test_dist_work_collect_funnel()
     # test_header_broadcast()
     # test_header_fifo()
-

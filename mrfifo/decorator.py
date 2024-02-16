@@ -119,6 +119,7 @@ if __name__ == "__main__":
         os.mkfifo('text_pipe')
 
         job = Job_decorator(file_reader, fname="test_data/simple.txt", out=FIFO("text", 'w'))
+        jobd = Job_decorator(parts.distributor, input=FIFO("text", "r"), outputs=FIFO("text_d{n}", 'w', n=4), output_header=FIFO("header", 'w'))
         job2 = Job_decorator(simple_counter, src=FIFO("text", 'r'))
 
         import multiprocessing as mp
@@ -126,10 +127,11 @@ if __name__ == "__main__":
         result_dict = manager.dict()
         pipe_dict={'text' : 'text_pipe'}
 
-        p2 = mp.Process(target=job2, kwargs=dict(result_dict=result_dict, pipe_dict=pipe_dict, job_name="dryrun.counter"))
-        p2.start()
         p1 = mp.Process(target=job, kwargs=dict(result_dict=result_dict, pipe_dict=pipe_dict, job_name="dryrun.reader"))
         p1.start()
+
+        p2 = mp.Process(target=job2, kwargs=dict(result_dict=result_dict, pipe_dict=pipe_dict, job_name="dryrun.counter"))
+        p2.start()
 
         p1.join()
         p2.join()
