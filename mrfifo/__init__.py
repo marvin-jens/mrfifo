@@ -4,13 +4,10 @@ import logging
 from functools import wraps
 from collections import defaultdict
 
-#from .fast_loops import *
 from . import parallel
 from . import plumbing
 from . import parts
 from . import util
-#from contextlib import contextmanager
-
 
 class FIFO():
     def __init__(self, name, mode, n=None):
@@ -68,10 +65,8 @@ class FIFO():
     def __repr__(self):
         return f"FIFO({self.mode} names={self.get_names()}) n={self.n}"
 
-from functools import wraps
-def Job_decorator(f, pass_internals=False, fifo_name_format={}, _manage_fifos=True, **kwargs):
-
-    # print("JOB DECORATOR", f)
+def fifo_routed(f, pass_internals=False, fifo_name_format={}, _manage_fifos=True, **kwargs):
+    from functools import wraps
     fifo_vars = {}
     kw = {}
     for k, v in kwargs.items():
@@ -84,7 +79,7 @@ def Job_decorator(f, pass_internals=False, fifo_name_format={}, _manage_fifos=Tr
             kw[k] = v
 
     @wraps(f)
-    def wrapper(result_dict={}, pipe_dict={}, job_name="", args=(), **kwds):
+    def wrapper(result_dict={}, pipe_dict={}, job_name="job", args=(), **kwds):
         kwargs = kw.copy()
         kwargs.update(**kwds)
         
@@ -112,24 +107,14 @@ class Job():
     def __init__(self, func, result_dict={}, pipe_dict={}, name="job"):
         self.name = name
         self.func = func
-        # self.argc = argc
-        # self.kwargs = kwargs
         self.result_dict = result_dict
         self.pipe_dict = pipe_dict
         self.p = None
 
     def create(self):
-        kwargs = dict()
-        # kwargs['inputs'] = [pipes.get(inp, inp) for inp in self.inputs]
-        # kwargs['outputs'] = [pipes.get(outp, outp) for outp in self.outputs]
-        kwargs['pipe_dict'] = self.pipe_dict
-        kwargs['result_dict'] = self.result_dict
-        kwargs['job_name'] = self.name
-        # print(f"  Job.create({self.name})")
-        # print(f"\tmapped inputs to {kwargs['inputs']}")
-        # print(f"\tmapped outputs to {kwargs['outputs']}")
         import multiprocessing as mp
-        return mp.Process(target=self.func, kwargs=kwargs)
+        return mp.Process(target=self.func, kwargs=dict(pipe_dict=self.pipe_dict,
+                          result_dict=self.result_dict, job_name=self.name))
 
     def start(self): #, pipes):
         assert self.p is None
@@ -200,11 +185,15 @@ class Workflow():
 
         return job_name.format(workflow=self.name, n=n)
 
-    def add_job(self, *argc, func=None, job_name="{workflow}.job{n}", assert_n_reader_ge=None, assert_n_writer_ge=None, **kwargs):
+    def add_job(self, *argc, func=None, job_name="{workflow}.job{n}", 
+                assert_n_reader_ge=None, assert_n_writer_ge=None, 
+                assert_n_reader_le=None, assert_n_writer_le=None,
+                **kwargs):
+
         assert func is not None
         job_name = self.render_job_name(job_name)
 
-        job_func, fifo_vars = Job_decorator(func, *argc, **kwargs)
+        job_func, fifo_vars = fifo_routed(func, *argc, **kwargs)
         job = Job(job_func, result_dict = self.result_dict, pipe_dict=self.pipe_dict,
                   name=job_name)
 
@@ -215,7 +204,11 @@ class Workflow():
         if assert_n_reader_ge:
             assert n_readers >= assert_n_reader_ge
         if assert_n_writer_ge:
-            assert_n_writer_ge >= assert_n_writer_ge
+            assert n_writers >= assert_n_writer_ge
+        if assert_n_reader_le:
+            assert n_readers <= assert_n_reader_le
+        if assert_n_writer_le:
+            assert n_writers <= assert_n_writer_le
 
         return self
 
@@ -227,24 +220,24 @@ class Workflow():
                             **kwargs)
 
     def gz_reader(self, *argc, job_name="{workflow}.igzip_text_reader{n}",
-                         func=parts.igzip_reader, input_files=["/dev/stdin"], 
-                         out=FIFO("input_text", "wb"), **kwargs):
+                         func=parts.igzip_reader, inputs=["/dev/stdin"], 
+                         output=FIFO("input_text", "wb"), **kwargs):
 
         return self.add_job(*argc, job_name=job_name, 
                             assert_n_writer_ge=1,
                             func=func,
-                            input_files=input_files,
-                            out=out,
+                            inputs=inputs,
+                            output=output,
                             **kwargs)
 
     def BAM_reader(self, *argc, job_name="{workflow}.BAM_reader{n}",
-                   func=parts.bam_reader, bam_name="/dev/stdin", out=FIFO("input_sam", "w"), 
-                   threads=2, **kwargs):
+                   func=parts.bam_reader, input="/dev/stdin", output=FIFO("input_sam", "w"), 
+                   threads=2, _manage_fifos=False, **kwargs):
 
         return self.add_job(*argc, job_name=job_name, 
                             func=func,
-                            bam_name=bam_name,
-                            out=out,
+                            input=input,
+                            output=output,
                             threads=threads,
                             assert_n_writer_ge=1, 
                             _manage_fifos=_manage_fifos,
@@ -275,42 +268,22 @@ class Workflow():
         return self
 
     def collect(self, *argc, func=parts.collector, 
-                   inputs=[], out="/dev/stdout", header_fifo="",
-                   job_name="{workflow}.dist{n}", _manage_fifos=False, **kwargs):
+                   inputs=[], output="/dev/stdout", header_fifo="",
+                   job_name="{workflow}.collect{n}", _manage_fifos=False, **kwargs):
 
         return self.add_job(*argc, job_name=job_name, 
                             func=func,
                             inputs=inputs,
-                            out=out, 
-                            assert_n_writer_ge=1, 
+                            output=output, 
                             assert_n_reader_ge=1, 
                             _manage_fifos=_manage_fifos,
                             header_fifo=header_fifo, 
                             **kwargs)
 
-
-    # def collect(self, *argc, input_pattern="", output="", output_is_file=False, func=None, job_name="{workflow}.collect{n}", n=4, **kwargs):
-    #     job = Job(func, [input_pattern.format(n=i) for i in range(n)], [output], argc=argc, kwargs=kwargs,
-    #               name=self.render_job_name(job_name))
-
-    #     self.register_job_inputs(job)
-    #     if not output_is_file:
-    #         self.register_job_outputs(job)
-
-    #     self._jobs.append(job)
-
-    #     return self
+    def funnel(self, *argc, job_name="{workflow}.funnel{n}", **kwargs):
+        # basically an alias for add_job()
+        return self.add_job(*argc, job_name=job_name, **kwargs)
     
-    # def funnel(self, *argc, inputs="", output="", func=None, job_name="{workflow}.funnel{n}", output_is_file=True, **kwargs):
-    #     job = Job(func, inputs, [output], argc=argc, kwargs=kwargs, name=self.render_job_name(job_name))
-    #     self.register_job_inputs(job)
-
-    #     if not output_is_file:
-    #         self.register_job_outputs(job)
-
-    #     self._jobs.append(job)
-    #     return self
-
     def run(self, dry_run=False):
         # gather all named pipes that are required
         pipe_names = self.get_pipe_list()
