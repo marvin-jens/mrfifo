@@ -222,8 +222,9 @@ def test_header_fifo():
             input=mf.FIFO("header", "rt"),
             func=header_checker,
         )
+        .run()
     )
-    w.run()
+
     print(w.result_dict)
     assert w.result_dict['BAM_header_fifo.worker0'] == (0, 9)
     assert w.result_dict['BAM_header_fifo.worker1'] == (0, 9)
@@ -231,6 +232,49 @@ def test_header_fifo():
     assert w.result_dict['BAM_header_fifo.worker3'] == (0, 8)
     assert w.result_dict['BAM_header_fifo.funnel0'] == (5, 0)
  
+def test_bam_reconstruct(chunk_size=1, n=4):
+    w = (
+        mf.Workflow('BAM_reconstruct')
+        .BAM_reader(input="test_data/tiny_test.bam")
+        .distribute(
+            input=mf.FIFO("input_sam", "rt"),
+            outputs=mf.FIFO("dist{n}", "wt", n=n),
+            chunk_size=chunk_size,
+            header_detect_func=is_header,
+            header_broadcast=False,
+            header_fifo=mf.FIFO("header", "wt"),
+        )
+        .workers(
+            input=mf.FIFO("dist{n}", "rt"),
+            output=mf.FIFO("out{n}", "wt"),
+            func=pass_through,
+            n=n,
+        )
+        .collect(
+            inputs=mf.FIFO("out{n}", "rt", n=n),
+            header_fifo=mf.FIFO("header", "rt"),
+            output=mf.FIFO("out_sam", "wt"),
+            chunk_size=chunk_size,
+        )
+        .funnel(
+            input=mf.FIFO("out_sam", "rt"),
+            output="test_data/reconstruct.bam",
+            _manage_fifos=False,
+            func=mf.parts.bam_writer
+        )
+        .run()
+    )
+
+    print(w.result_dict)
+    from pprint import pprint
+    pprint(w._fifo_readers)
+    pprint(w._fifo_writers)
+
+    import os
+    os.system('samtools view -Sh --no-PG test_data/tiny_test.bam > orig')
+    os.system('samtools view -Sh --no-PG test_data/reconstruct.bam > rec')
+    os.system('diff orig rec > delta')
+    assert len(open('delta').read().strip()) == 0
 
 if __name__ == "__main__":
     import logging
@@ -244,3 +288,4 @@ if __name__ == "__main__":
     # test_dist_work_collect_funnel()
     # test_header_broadcast()
     # test_header_fifo()
+    test_bam_reconstruct()

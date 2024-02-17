@@ -25,12 +25,18 @@ def igzip_reader(inputs, output):
     return n_bytes
 
 
-def bam_reader(input, output, threads=2, name="mrfifo.parts.bam_reader"):
+def bam_reader(input, output, threads=2):
     "ensure that the out FIFO is not managed"
     assert type(output) is str
     import os
     return os.system(f'samtools view -Sh --no-PG --threads={threads} {input} > {output}')
 
+def bam_writer(input, output, threads=4, fmt="bh"):
+    "ensure that the out FIFOs are not managed"
+    assert type(output) is str
+    assert type(input) is str
+    import os
+    return os.system(f'samtools view -{fmt} --no-PG --threads={threads} {input} > {output}')
 
 def distributor(input, outputs, **kw):
     "ensure that the FIFOs are not managed"

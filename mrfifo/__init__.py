@@ -11,6 +11,7 @@ from . import util
 
 class FIFO():
     def __init__(self, name, mode, n=None):
+        self.logger = logging.getLogger(f'mrfifo.FIFO.{name}')
         self.name = name
         self.mode = mode
         self.n = n
@@ -59,8 +60,10 @@ class FIFO():
 
     def close(self):
         for f in self.file_objects:
+            self.logger.debug(f"closing {f}")
             f.flush()
             f.close()
+            self.logger.debug(f"done closing {f}")
 
     def __repr__(self):
         return f"FIFO({self.mode} names={self.get_names()}) n={self.n}"
