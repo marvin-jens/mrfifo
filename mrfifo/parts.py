@@ -50,8 +50,13 @@ def distributor(input, outputs, **kw):
     return res
 
 
-def collector(inputs, output, name="mrfifo.parts.collector", **kw):
+def collector(inputs, output, **kw):
     "ensure that the FIFOs are not managed"
+    for inp in inputs:
+        assert type(inp) is str
+
+    assert type(output) is str
+
     logger = logging.getLogger("mrfifo.parts.collector")
     logger.info(f"collecting from '{inputs}', writing to '{output}' kw={kw}")
     from .fast_loops import collect
@@ -60,19 +65,19 @@ def collector(inputs, output, name="mrfifo.parts.collector", **kw):
     return res
 
 
-def serializer(inputs, outputs, name="mrfifo.parts.serializser", **kw):
-    assert len(inputs) > 0
-    assert len(outputs) == 1
-    fout = outputs.pop()
+# def serializer(inputs, outputs, name="mrfifo.parts.serializser", **kw):
+#     assert len(inputs) > 0
+#     assert len(outputs) == 1
+#     fout = outputs.pop()
 
-    with ExceptionLogging(name) as el:
-        el.logger.debug(f"writing to '{fout}'")
-        with open(fout, 'w') as out:
-            for fin in inputs:
-                el.logger.debug(f"reading from '{fin}'")
-                f = open(fin)
-                for line in f:
-                    # el.logger.debug(f"got line {line}")
-                    out.write(line)
-                f.close()
+#     with ExceptionLogging(name) as el:
+#         el.logger.debug(f"writing to '{fout}'")
+#         with open(fout, 'w') as out:
+#             for fin in inputs:
+#                 el.logger.debug(f"reading from '{fin}'")
+#                 f = open(fin)
+#                 for line in f:
+#                     # el.logger.debug(f"got line {line}")
+#                     out.write(line)
+#                 f.close()
 

@@ -17,11 +17,23 @@ def simple_counter(input):
     
     return i
 
-def pass_through(input, output):
+def fancy_counter(input):
+    counts = mf.util.CountDict()
+    for line in mf.util.timed_loop(input, logging.getLogger("fancy_counter"), chunk_size=1, T=0):
+        counts.count(f"obs_{line.strip()}")
+    
+    return counts
+
+
+def pass_through(input, output, raise_exception=False, _logger=None, _job_name="job", **kwargs):
     i = 0
     for line in input:
         i += 1
         output.write(line)
+        if raise_exception:
+            if _logger is not None:
+                _logger.warning("about to raise exception!")
+            raise ValueError(f"{_job_name} was asked to raise an exception for testing purposes. Here we are...")
     
     return i
 
@@ -264,6 +276,7 @@ def test_bam_reconstruct(chunk_size=1, n=4):
         )
         .run()
     )
+    print(str(w))
 
     print(w.result_dict)
     from pprint import pprint
@@ -276,9 +289,70 @@ def test_bam_reconstruct(chunk_size=1, n=4):
     os.system('diff orig rec > delta')
     assert len(open('delta').read().strip()) == 0
 
+def test_exception(chunk_size=1, n=4):
+    try:
+        w = (
+            mf.Workflow('exception test')
+            .BAM_reader(input="test_data/tiny_test.bam")
+            .distribute(
+                input=mf.FIFO("input_sam", "rt"),
+                outputs=mf.FIFO("dist{n}", "wt", n=n),
+                chunk_size=chunk_size,
+                header_detect_func=is_header,
+                header_broadcast=False,
+                header_fifo=mf.FIFO("header", "wt"),
+            )
+            .workers(
+                input=mf.FIFO("dist{n}", "rt"),
+                output=mf.FIFO("out{n}", "wt"),
+                func=pass_through,
+                n=n,
+                raise_exception=True,
+                pass_internals=True
+            )
+            .collect(
+                inputs=mf.FIFO("out{n}", "rt", n=n),
+                header_fifo=mf.FIFO("header", "rt"),
+                output=mf.FIFO("out_sam", "wt"),
+                chunk_size=chunk_size,
+            )
+            .funnel(
+                input=mf.FIFO("out_sam", "rt"),
+                output="test_data/reconstruct.bam",
+                _manage_fifos=False,
+                func=mf.parts.bam_writer
+            )
+            .run()
+        )
+    except mf.WorkflowError:
+        pass
+    else:
+        raise ValueError("expected a WorkflowError in this test!")
+
+def test_fancy_counter():
+    w = (
+        mf.Workflow('fancy_line_counter')
+        .gz_reader(inputs=["test_data/simple.txt.gz"])
+        # gz_reader, by default, writes to 'input_text'
+        .distribute(
+            input=mf.FIFO("input_text", 'rt'),
+            outputs=mf.FIFO("dist{n}", "wt", n=4),
+            chunk_size=1,
+        )
+        .workers(
+            func=fancy_counter,
+            input=mf.FIFO("dist{n}", "rt"),
+            n=4,
+        )
+        .run()
+    )
+    counts = mf.util.CountDict(w.result_dict.values())
+    df = counts.get_stats_df()
+    print(df)
+
 if __name__ == "__main__":
     import logging
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.DEBUG, format="%(asctime)-20s\t%(name)-30s\t%(levelname)s\t%(message)s",)
     # test_plumbing()
     # test_input_output()
     # test_dist()
@@ -288,4 +362,5 @@ if __name__ == "__main__":
     # test_dist_work_collect_funnel()
     # test_header_broadcast()
     # test_header_fifo()
-    test_bam_reconstruct()
+    # test_bam_reconstruct()
+    test_fancy_counter()

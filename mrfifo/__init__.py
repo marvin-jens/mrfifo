@@ -9,6 +9,9 @@ from . import plumbing
 from . import parts
 from . import util
 
+class WorkflowError(Exception):
+    pass
+
 class FIFO():
     def __init__(self, name, mode, n=None):
         self.logger = logging.getLogger(f'mrfifo.FIFO.{name}')
@@ -82,42 +85,44 @@ def fifo_routed(f, pass_internals=False, fifo_name_format={}, _manage_fifos=True
             kw[k] = v
 
     @wraps(f)
-    def wrapper(result_dict={}, pipe_dict={}, job_name="job", args=(), **kwds):
+    def wrapper(result_dict={}, pipe_dict={}, exc_dict={}, job_name="job", args=(), **kwds):
         kwargs = kw.copy()
         kwargs.update(**kwds)
         
         for target, fifo in fifo_vars.items():
             kwargs[target] = fifo.open(pipe_dict, manage_fifos=_manage_fifos)
 
-        try:
-            with parallel.ExceptionLogging(job_name) as el:
-                if pass_internals:
-                    kwargs['_job_name'] = job_name
-                    kwargs['_exception_logger'] = el
+        with parallel.ExceptionLogging(name=job_name, exc_dict=exc_dict) as el:
+            try:
+                    if pass_internals:
+                        kwargs['_job_name'] = job_name
+                        kwargs['_logger'] = el.logger
 
-                res = f(*args, **kwargs)
-                result_dict[job_name] = res
+                    res = f(*args, **kwargs)
+                    result_dict[job_name] = res
 
-        finally:
-            for fifo in fifo_vars.values():
-                fifo.close()
-
+            finally:
+                for fifo in fifo_vars.values():
+                    fifo.close()
+            
     
     return wrapper, fifo_vars
 
 
 class Job():
-    def __init__(self, func, result_dict={}, pipe_dict={}, name="job"):
+    def __init__(self, func, result_dict={}, exc_dict={}, pipe_dict={}, name="job"):
         self.name = name
         self.func = func
         self.result_dict = result_dict
+        self.exc_dict = exc_dict
         self.pipe_dict = pipe_dict
         self.p = None
 
     def create(self):
         import multiprocessing as mp
         return mp.Process(target=self.func, kwargs=dict(pipe_dict=self.pipe_dict,
-                          result_dict=self.result_dict, job_name=self.name))
+                          result_dict=self.result_dict, exc_dict=self.exc_dict, 
+                          job_name=self.name))
 
     def start(self): #, pipes):
         assert self.p is None
@@ -136,7 +141,7 @@ class Workflow():
     def __init__(self, name, n=4):
         self.name = name
         self.n = n
-        self.logger = logging.getLogger(self.name)
+        self.logger = logging.getLogger(f"{self.name}.Workflow")
         self.job_count_by_pattern = defaultdict(int)
 
         self._jobs = []
@@ -147,8 +152,9 @@ class Workflow():
         
         import multiprocessing as mp
         self.manager = mp.Manager()
-        self.result_dict = self.manager.dict()
         self.pipe_dict = self.manager.dict()
+        self.result_dict = self.manager.dict()
+        self.exc_dict = self.manager.dict()
 
     def register_fifos(self, fifos, job_name):
         n_readers = 0
@@ -198,7 +204,7 @@ class Workflow():
 
         job_func, fifo_vars = fifo_routed(func, *argc, **kwargs)
         job = Job(job_func, result_dict = self.result_dict, pipe_dict=self.pipe_dict,
-                  name=job_name)
+                  exc_dict=self.exc_dict, name=job_name)
 
         n_readers, n_writers = self.register_fifos(fifo_vars.values(), job_name=job_name)
         self.logger.debug(f"add_job job={job} n_readers={n_readers} n_writers={n_writers} fifo_vars={fifo_vars}")
@@ -304,6 +310,16 @@ class Workflow():
                 for job in self._jobs:
                     self.logger.debug(f"waiting for {job}")
                     job.join()
+
+        # check for exceptions that occurred in child processes
+        caught_exc = False
+        for jobname, exc in sorted(self.exc_dict.items()):
+            for line in exc:
+                self.logger.error(f"exception in {jobname}: {line}")
+                caught_exc = True
+
+        if caught_exc:
+            raise WorkflowError("detected unhandled exceptions in jobs during workflow-execution")
 
         return self
 
