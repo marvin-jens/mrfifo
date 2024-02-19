@@ -36,6 +36,7 @@ class CountDict:
     def values(self):
         return self.stats.values()
 
+
 def timed_loop(
     src,
     logger,
@@ -71,10 +72,9 @@ def timed_loop(
 
 
 header_template = \
-"""
-@HD     VN:{sam_version}
-@RG     ID:{rg_id}\tSM:{rg_name}
-@PG     PN:{prog_name}\tID:{prog_id}\tVN:{prog_version}\tCL:{cmdline}
+"""@HD\tVN:{sam_version}
+@RG\tID:{rg_id}\tSM:{rg_name}
+@PG\tPN:{prog_name}\tID:{prog_id}\tVN:{prog_version}\tCL:{cmdline}
 """
 
 def make_SAM_header(
@@ -83,7 +83,7 @@ def make_SAM_header(
         rg_name="sample",
         prog_name=sys.argv[0],
         prog_id=sys.argv[0],
-        cmdline=" ".join(sys.argv[1:]),
+        cmdline=" ".join(sys.argv),
         prog_version=__version__):
 
     return header_template.format(**locals())

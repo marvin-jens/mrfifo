@@ -31,7 +31,7 @@ def bam_reader(input, output, threads=2):
     import os
     return os.system(f'samtools view -Sh --no-PG --threads={threads} {input} > {output}')
 
-def bam_writer(input, output, threads=4, fmt="bh"):
+def bam_writer(input, output, threads=4, fmt="Sbh"):
     "ensure that the out FIFOs are not managed"
     assert type(output) is str
     assert type(input) is str

@@ -37,6 +37,16 @@ def pass_through(input, output, raise_exception=False, _logger=None, _job_name="
     
     return i
 
+def turn_to_SAM(input, output, **kwargs):
+    sam_line = "{qname}\t4\t*\t0\t0\t*\t*\t0\t0\t{seq}\t{qual}\t{tags}\n"
+    tags = "RG:Z:A"
+    for line in input:
+        i = int(line)
+        qname = f"read_{i}"
+        seq = "ACTG" + "ACTG" * i
+        qual = "E" * len(seq)
+        output.write(sam_line.format(**locals()))
+
 def add_lines(inputs, output):
     i = 0
     for input in inputs:
@@ -350,6 +360,43 @@ def test_fancy_counter():
     df = counts.get_stats_df()
     print(df)
 
+def test_BAM_creation(n=2, chunk_size=1):
+    w = (
+        mf.Workflow('BAM_create')
+        .gz_reader(inputs=["test_data/simple.txt.gz"])
+        .distribute(
+            input=mf.FIFO("input_text", "rt"),
+            outputs=mf.FIFO("dist{n}", "wt", n=n),
+            chunk_size=chunk_size,
+        )
+        .workers(
+            input=mf.FIFO("dist{n}", "rt"),
+            output=mf.FIFO("out{n}", "wt"),
+            func=turn_to_SAM,
+            n=n,
+        )
+        .collect(
+            inputs=mf.FIFO("out{n}", "rt", n=n),
+            header_lines=[mf.util.make_SAM_header(),],
+        #     output="test.sam",
+        #     chunk_size=chunk_size,
+        # )
+
+            output=mf.FIFO("out_sam", "wt"), #"test.sam",
+            chunk_size=chunk_size,
+        )
+        .funnel(
+            input=mf.FIFO("out_sam", "rt"),
+            output="test_data/new.bam",
+            _manage_fifos=False,
+            func=mf.parts.bam_writer,
+            fmt="Sbh"
+        )
+        .run()
+    )
+    print(str(w))
+
+
 if __name__ == "__main__":
     import logging
     logging.basicConfig(level=logging.DEBUG, format="%(asctime)-20s\t%(name)-30s\t%(levelname)s\t%(message)s",)
@@ -363,4 +410,5 @@ if __name__ == "__main__":
     # test_header_broadcast()
     # test_header_fifo()
     # test_bam_reconstruct()
-    test_fancy_counter()
+    # test_fancy_counter()
+    test_BAM_creation()
