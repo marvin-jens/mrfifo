@@ -377,7 +377,7 @@ def test_BAM_creation(n=2, chunk_size=1):
         )
         .collect(
             inputs=mf.FIFO("out{n}", "rt", n=n),
-            header_lines=[mf.util.make_SAM_header(),],
+            custom_header=mf.util.make_SAM_header(),
         #     output="test.sam",
         #     chunk_size=chunk_size,
         # )

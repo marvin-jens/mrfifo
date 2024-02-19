@@ -209,7 +209,7 @@ def distribute_by_substr(str fin_name, list fifo_names, dict sub_lookup,
 
 def collect(list fifo_names, str fout_name, int chunk_size=10000, 
             size_t in_buf_size=2**19, size_t out_buf_size=2**20,
-            header_fifo="", header_lines=[]):
+            header_fifo="", custom_header=None):
 
     if header_fifo == 0:
         # special mode: use the first fifo name for header data 
@@ -242,11 +242,10 @@ def collect(list fifo_names, str fout_name, int chunk_size=10000,
     stdio.setvbuf(fout, out_buf, stdio._IOFBF, out_buf_size)
 
     # cdef char * line_bytes
-    if header_lines:
-        # we have a list with header lines, write these first!
-        for line in header_lines:
-            line_bytes = line.encode('utf-8')
-            stdio.fwrite(<const char*>line_bytes, len(line_bytes), 1, fout)
+    if custom_header is not None:
+        # we have a custom header string, write this first!
+        header_bytes = custom_header.encode('utf-8')
+        stdio.fwrite(<const char*>header_bytes, len(header_bytes), 1, fout)
 
     cdef stdio.FILE *fheader
     if header_fifo:
