@@ -9,19 +9,21 @@ from . import plumbing
 from . import parts
 from . import util
 
+
 class WorkflowError(Exception):
     pass
 
-class FIFO():
+
+class FIFO:
     def __init__(self, name, mode, n=None):
-        self.logger = logging.getLogger(f'mrfifo.FIFO.{name}')
+        self.logger = logging.getLogger(f"mrfifo.FIFO.{name}")
         self.name = name
         self.mode = mode
         self.n = n
         self.file_objects = []
 
-        assert mode[0] in ['r', 'w']
-    
+        assert mode[0] in ["r", "w"]
+
     def _format_name(self, context):
         return FIFO(self.name.format(**context), self.mode, n=self.n)
 
@@ -29,22 +31,22 @@ class FIFO():
         return self.n is not None
 
     def is_reader(self):
-        return self.mode[0] == 'r'
-    
+        return self.mode[0] == "r"
+
     def get_names(self, **kw):
         if self.is_collection():
             return [self.name.format(n=i, **kw) for i in range(self.n)]
         else:
-            return [self.name,]
-    
+            return [
+                self.name,
+            ]
+
     def open(self, pipe_dict, manage_fifos=True, **kw):
         from mrfifo.plumbing import open_named_pipe
+
         if manage_fifos:
             self.file_objects = [
-                open_named_pipe(
-                    pipe_dict[name], 
-                    mode=self.mode
-                )
+                open_named_pipe(pipe_dict[name], mode=self.mode)
                 for name in self.get_names(**kw)
             ]
 
@@ -60,7 +62,6 @@ class FIFO():
             else:
                 return paths[0]
 
-
     def close(self):
         for f in self.file_objects:
             self.logger.debug(f"closing {f}")
@@ -71,8 +72,12 @@ class FIFO():
     def __repr__(self):
         return f"FIFO({self.mode} names={self.get_names()}) n={self.n}"
 
-def fifo_routed(f, pass_internals=False, fifo_name_format={}, _manage_fifos=True, **kwargs):
+
+def fifo_routed(
+    f, pass_internals=False, fifo_name_format={}, _manage_fifos=True, **kwargs
+):
     from functools import wraps
+
     fifo_vars = {}
     kw = {}
     for k, v in kwargs.items():
@@ -85,31 +90,32 @@ def fifo_routed(f, pass_internals=False, fifo_name_format={}, _manage_fifos=True
             kw[k] = v
 
     @wraps(f)
-    def wrapper(result_dict={}, pipe_dict={}, exc_dict={}, job_name="job", args=(), **kwds):
+    def wrapper(
+        result_dict={}, pipe_dict={}, exc_dict={}, job_name="job", args=(), **kwds
+    ):
         kwargs = kw.copy()
         kwargs.update(**kwds)
-        
+
         for target, fifo in fifo_vars.items():
             kwargs[target] = fifo.open(pipe_dict, manage_fifos=_manage_fifos)
 
         with parallel.ExceptionLogging(name=job_name, exc_dict=exc_dict) as el:
             try:
-                    if pass_internals:
-                        kwargs['_job_name'] = job_name
-                        kwargs['_logger'] = el.logger
+                if pass_internals:
+                    kwargs["_job_name"] = job_name
+                    kwargs["_logger"] = el.logger
 
-                    res = f(*args, **kwargs)
-                    result_dict[job_name] = res
+                res = f(*args, **kwargs)
+                result_dict[job_name] = res
 
             finally:
                 for fifo in fifo_vars.values():
                     fifo.close()
-            
-    
+
     return wrapper, fifo_vars
 
 
-class Job():
+class Job:
     def __init__(self, func, result_dict={}, exc_dict={}, pipe_dict={}, name="job"):
         self.name = name
         self.func = func
@@ -120,24 +126,31 @@ class Job():
 
     def create(self):
         import multiprocessing as mp
-        return mp.Process(target=self.func, kwargs=dict(pipe_dict=self.pipe_dict,
-                          result_dict=self.result_dict, exc_dict=self.exc_dict, 
-                          job_name=self.name))
 
-    def start(self): #, pipes):
+        return mp.Process(
+            target=self.func,
+            kwargs=dict(
+                pipe_dict=self.pipe_dict,
+                result_dict=self.result_dict,
+                exc_dict=self.exc_dict,
+                job_name=self.name,
+            ),
+        )
+
+    def start(self):  # , pipes):
         assert self.p is None
-        self.p = self.create() #pipes)
+        self.p = self.create()  # pipes)
         self.p.start()
-    
+
     def join(self):
         assert self.p is not None
         self.p.join()
-    
+
     def __str__(self):
         return f"Job({self.name}) func={self.func.__name__}"
-        
 
-class Workflow():
+
+class Workflow:
     def __init__(self, name, n=4):
         self.name = name
         self.n = n
@@ -149,8 +162,9 @@ class Workflow():
         self._fifo_readers = defaultdict(list)
         self._fifo_writers = defaultdict(list)
         self._fifo_balance = defaultdict(int)
-        
+
         import multiprocessing as mp
+
         self.manager = mp.Manager()
         self.pipe_dict = self.manager.dict()
         self.result_dict = self.manager.dict()
@@ -169,22 +183,26 @@ class Workflow():
                     self._fifo_balance[name] -= 1
                     self._fifo_writers[name].append(job_name)
                     n_writers += 1
-        
+
         return n_readers, n_writers
 
     def check(self):
         unbalanced = False
         for name, bal in self._fifo_balance.items():
             if bal > 0:
-                self.logger.error(f"fifo {name} has a reader but no writer! (balance={bal})")
+                self.logger.error(
+                    f"fifo {name} has a reader but no writer! (balance={bal})"
+                )
                 unbalanced = name
             elif bal < 0:
-                self.logger.error(f"fifo {name} has a writer but no reader! (balance={bal})")
+                self.logger.error(
+                    f"fifo {name} has a writer but no reader! (balance={bal})"
+                )
                 unbalanced = name
-        
-        if unbalanced: 
+
+        if unbalanced:
             raise ValueError(f"workflow '{self.name}' has deadlocking fifo '{name}'")
-        
+
     def get_pipe_list(self):
         return sorted(self._fifo_balance.keys())
 
@@ -194,20 +212,36 @@ class Workflow():
 
         return job_name.format(workflow=self.name, n=n)
 
-    def add_job(self, *argc, func=None, job_name="{workflow}.job{n}", 
-                assert_n_reader_ge=None, assert_n_writer_ge=None, 
-                assert_n_reader_le=None, assert_n_writer_le=None,
-                **kwargs):
+    def add_job(
+        self,
+        *argc,
+        func=None,
+        job_name="{workflow}.job{n}",
+        assert_n_reader_ge=None,
+        assert_n_writer_ge=None,
+        assert_n_reader_le=None,
+        assert_n_writer_le=None,
+        **kwargs,
+    ):
 
         assert func is not None
         job_name = self.render_job_name(job_name)
 
         job_func, fifo_vars = fifo_routed(func, *argc, **kwargs)
-        job = Job(job_func, result_dict = self.result_dict, pipe_dict=self.pipe_dict,
-                  exc_dict=self.exc_dict, name=job_name)
+        job = Job(
+            job_func,
+            result_dict=self.result_dict,
+            pipe_dict=self.pipe_dict,
+            exc_dict=self.exc_dict,
+            name=job_name,
+        )
 
-        n_readers, n_writers = self.register_fifos(fifo_vars.values(), job_name=job_name)
-        self.logger.debug(f"add_job job={job} n_readers={n_readers} n_writers={n_writers} fifo_vars={fifo_vars}")
+        n_readers, n_writers = self.register_fifos(
+            fifo_vars.values(), job_name=job_name
+        )
+        self.logger.debug(
+            f"add_job job={job} n_readers={n_readers} n_writers={n_writers} fifo_vars={fifo_vars}"
+        )
         self._jobs.append(job)
 
         if assert_n_reader_ge:
@@ -224,75 +258,118 @@ class Workflow():
     # presets/short-hands for more readable workflow compositions
     def reader(self, *argc, job_name="{workflow}.reader{n}", **kwargs):
 
-        return self.add_job(*argc, job_name=job_name, 
-                            assert_n_writer_ge=1,
-                            **kwargs)
+        return self.add_job(*argc, job_name=job_name, assert_n_writer_ge=1, **kwargs)
 
-    def gz_reader(self, *argc, job_name="{workflow}.igzip_text_reader{n}",
-                         func=parts.igzip_reader, inputs=["/dev/stdin"], 
-                         output=FIFO("input_text", "wb"), **kwargs):
+    def gz_reader(
+        self,
+        *argc,
+        job_name="{workflow}.igzip_text_reader{n}",
+        func=parts.igzip_reader,
+        inputs=["/dev/stdin"],
+        output=FIFO("input_text", "wb"),
+        **kwargs,
+    ):
 
-        return self.add_job(*argc, job_name=job_name, 
-                            assert_n_writer_ge=1,
-                            func=func,
-                            inputs=inputs,
-                            output=output,
-                            **kwargs)
+        return self.add_job(
+            *argc,
+            job_name=job_name,
+            assert_n_writer_ge=1,
+            func=func,
+            inputs=inputs,
+            output=output,
+            **kwargs,
+        )
 
-    def BAM_reader(self, *argc, job_name="{workflow}.BAM_reader{n}",
-                   func=parts.bam_reader, input="/dev/stdin", output=FIFO("input_sam", "w"), 
-                   threads=2, _manage_fifos=False, **kwargs):
+    def BAM_reader(
+        self,
+        *argc,
+        job_name="{workflow}.BAM_reader{n}",
+        func=parts.bam_reader,
+        input="/dev/stdin",
+        output=FIFO("input_sam", "w"),
+        threads=2,
+        _manage_fifos=False,
+        **kwargs,
+    ):
 
-        return self.add_job(*argc, job_name=job_name, 
-                            func=func,
-                            input=input,
-                            output=output,
-                            threads=threads,
-                            assert_n_writer_ge=1, 
-                            _manage_fifos=_manage_fifos,
-                            **kwargs)
+        return self.add_job(
+            *argc,
+            job_name=job_name,
+            func=func,
+            input=input,
+            output=output,
+            threads=threads,
+            assert_n_writer_ge=1,
+            _manage_fifos=_manage_fifos,
+            **kwargs,
+        )
 
-    def distribute(self, *argc, func=parts.distributor, 
-                   header_fifo="", header_detect_func=None, header_broadcast=False,
-                   job_name="{workflow}.dist{n}", _manage_fifos=False, **kwargs):
+    def distribute(
+        self,
+        *argc,
+        func=parts.distributor,
+        header_fifo="",
+        header_detect_func=None,
+        header_broadcast=False,
+        job_name="{workflow}.dist{n}",
+        _manage_fifos=False,
+        **kwargs,
+    ):
 
-        return self.add_job(*argc, job_name=job_name, 
-                            func=func, 
-                            assert_n_writer_ge=1, 
-                            assert_n_reader_ge=1, 
-                            _manage_fifos=_manage_fifos,
-                            header_fifo=header_fifo, 
-                            header_detect_func=header_detect_func,
-                            header_broadcast=header_broadcast,
-                            **kwargs)
+        return self.add_job(
+            *argc,
+            job_name=job_name,
+            func=func,
+            assert_n_writer_ge=1,
+            assert_n_reader_ge=1,
+            _manage_fifos=_manage_fifos,
+            header_fifo=header_fifo,
+            header_detect_func=header_detect_func,
+            header_broadcast=header_broadcast,
+            **kwargs,
+        )
 
     def workers(self, *argc, n=4, func=None, job_name="{workflow}.worker{n}", **kwargs):
         for i in range(n):
-            self.add_job(*argc, job_name=job_name,
-                         func=func,
-                         assert_n_reader_ge=1, 
-                         fifo_name_format={'n' : i},
-                         **kwargs)
+            self.add_job(
+                *argc,
+                job_name=job_name,
+                func=func,
+                assert_n_reader_ge=1,
+                fifo_name_format={"n": i},
+                **kwargs,
+            )
 
         return self
 
-    def collect(self, *argc, func=parts.collector, 
-                   inputs=[], output="/dev/stdout", header_fifo="",
-                   job_name="{workflow}.collect{n}", _manage_fifos=False, **kwargs):
+    def collect(
+        self,
+        *argc,
+        func=parts.collector,
+        inputs=[],
+        output="/dev/stdout",
+        header_fifo="",
+        job_name="{workflow}.collect{n}",
+        _manage_fifos=False,
+        **kwargs,
+    ):
 
-        return self.add_job(*argc, job_name=job_name, 
-                            func=func,
-                            inputs=inputs,
-                            output=output, 
-                            assert_n_reader_ge=1, 
-                            _manage_fifos=_manage_fifos,
-                            header_fifo=header_fifo, 
-                            **kwargs)
+        return self.add_job(
+            *argc,
+            job_name=job_name,
+            func=func,
+            inputs=inputs,
+            output=output,
+            assert_n_reader_ge=1,
+            _manage_fifos=_manage_fifos,
+            header_fifo=header_fifo,
+            **kwargs,
+        )
 
     def funnel(self, *argc, job_name="{workflow}.funnel{n}", **kwargs):
         # basically an alias for add_job()
         return self.add_job(*argc, job_name=job_name, **kwargs)
-    
+
     def run(self, dry_run=False):
         # gather all named pipes that are required
         pipe_names = self.get_pipe_list()
@@ -301,7 +378,7 @@ class Workflow():
         if not dry_run:
             with plumbing.create_named_pipes(pipe_names) as pipes:
                 self.pipe_dict.update(pipes)
-                # start all processes in reverse data-flow order 
+                # start all processes in reverse data-flow order
                 for job in reversed(self._jobs):
                     self.logger.debug(f"starting {job}")
                     job.start()
@@ -319,7 +396,9 @@ class Workflow():
                 caught_exc = True
 
         if caught_exc:
-            raise WorkflowError("detected unhandled exceptions in jobs during workflow-execution")
+            raise WorkflowError(
+                "detected unhandled exceptions in jobs during workflow-execution"
+            )
 
         return self
 
@@ -328,9 +407,8 @@ class Workflow():
         buf = [f"Workflow({self.name})"]
         for i, job in self._fifo_readers.items():
             buf.append(f"I:{i} -> J:{job}")
-        
+
         for o, job in self._fifo_writers.items():
             buf.append(f"J:{job} -> O:{o}")
-        
+
         return "\n".join(buf)
-    

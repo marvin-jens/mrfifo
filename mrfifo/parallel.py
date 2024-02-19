@@ -4,6 +4,7 @@ from .contrib import __version__, __author__, __license__, __email__
 import logging
 from contextlib import contextmanager
 
+
 class ExceptionLogging:
     """
     A context manager that handles otherwise uncaught exceptions by logging
@@ -17,10 +18,13 @@ class ExceptionLogging:
         self.name = name
         self.logger = logging.getLogger(name)
         self.exception = None
-        self.logger.debug(f"ExceptionLogging(name={name}, exc_flag={exc_flag}, exc_dict={exc_dict})")
+        self.logger.debug(
+            f"ExceptionLogging(name={name}, exc_flag={exc_flag}, exc_dict={exc_dict})"
+        )
 
         if set_proc_title:
             import setproctitle
+
             setproctitle.setproctitle(name)
 
     def __enter__(self):
@@ -49,4 +53,3 @@ class ExceptionLogging:
             if self.exc_flag is not None:
                 self.logger.error(f"raising exception flag {self.exc_flag}")
                 self.exc_flag.value = True
-

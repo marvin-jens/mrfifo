@@ -8,6 +8,7 @@ from .contrib import __version__, __license__, __author__, __email__
 class CountDict:
     def __init__(self, others=[]):
         from collections import defaultdict
+
         self.stats = defaultdict(float)
         for o in others:
             if type(o) is CountDict:
@@ -22,14 +23,27 @@ class CountDict:
 
     def get_stats_df(self):
         import pandas as pd
-        return pd.DataFrame(dict([(k, [v,]) for k, v in sorted(self.stats.items())]))
 
-    def save_stats(self, path, sep='\t', **kw):
+        return pd.DataFrame(
+            dict(
+                [
+                    (
+                        k,
+                        [
+                            v,
+                        ],
+                    )
+                    for k, v in sorted(self.stats.items())
+                ]
+            )
+        )
+
+    def save_stats(self, path, sep="\t", **kw):
         self.get_stats_df().to_csv(path, sep=sep, **kw)
 
     def items(self):
         return self.stats.items()
-    
+
     def keys(self):
         return self.stats.keys()
 
@@ -71,19 +85,20 @@ def timed_loop(
     logger.info("Finished! " + template.format(**locals()))
 
 
-header_template = \
-"""@HD\tVN:{sam_version}
+header_template = """@HD\tVN:{sam_version}
 @RG\tID:{rg_id}\tSM:{rg_name}
 @PG\tPN:{prog_name}\tID:{prog_id}\tVN:{prog_version}\tCL:{cmdline}
 """
 
+
 def make_SAM_header(
-        sam_version="1.6",
-        rg_id="A",
-        rg_name="sample",
-        prog_name=sys.argv[0],
-        prog_id=sys.argv[0],
-        cmdline=" ".join(sys.argv),
-        prog_version=__version__):
+    sam_version="1.6",
+    rg_id="A",
+    rg_name="sample",
+    prog_name=sys.argv[0],
+    prog_id=sys.argv[0],
+    cmdline=" ".join(sys.argv),
+    prog_version=__version__,
+):
 
     return header_template.format(**locals())
