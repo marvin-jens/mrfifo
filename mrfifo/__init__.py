@@ -370,7 +370,7 @@ class Workflow:
         # basically an alias for add_job()
         return self.add_job(*argc, job_name=job_name, **kwargs)
 
-    def run(self, dry_run=False):
+    def start(self, dry_run=False):
         # gather all named pipes that are required
         pipe_names = self.get_pipe_list()
         self.logger.debug(f"pipe_names={pipe_names}")
@@ -383,10 +383,13 @@ class Workflow:
                     self.logger.debug(f"starting {job}")
                     job.start()
 
-                # join jobs in data-flow order
-                for job in self._jobs:
-                    self.logger.debug(f"waiting for {job}")
-                    job.join()
+        return self
+
+    def join(self):
+        # join jobs in data-flow order
+        for job in self._jobs:
+            self.logger.debug(f"waiting for {job}")
+            job.join()
 
         # check for exceptions that occurred in child processes
         caught_exc = False
@@ -401,6 +404,11 @@ class Workflow:
             )
 
         return self
+
+    def run(self, dry_run=False):
+        self.start(dry_run)
+        self.join()
+
 
     def __str__(self):
         # TODO: make this more comprehensive and beautiful
