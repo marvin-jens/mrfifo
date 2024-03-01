@@ -16,6 +16,7 @@ def create_named_pipes(names):
     logger = logging.getLogger("mrfifo.plumbing.create_named_pipes")
     with tempfile.TemporaryDirectory() as base:
         paths = [os.path.join(base, name) for name in names]
+        logger.debug(f"creating the following FIFOs: '{paths}'")
         for fname in paths:
             if os.path.exists(fname):
                 logger.warning(
@@ -31,7 +32,7 @@ def create_named_pipes(names):
                 os.remove(fname)
 
 
-def open_named_pipe(path, mode="rt+", buffer_size=1048576): # 524288
+def open_named_pipe(path, mode="rt+", buffer_size=1048576):  # 524288
     import fcntl
 
     F_SETPIPE_SZ = 1031  # Linux 2.6.35+
