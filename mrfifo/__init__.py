@@ -406,9 +406,36 @@ class Workflow:
         return self
 
     def run(self, dry_run=False):
-        self.start(dry_run)
-        self.join()
+        # gather all named pipes that are required
+        pipe_names = self.get_pipe_list()
+        self.logger.debug(f"pipe_names={pipe_names}")
+        self.check()
+        if not dry_run:
+            with plumbing.create_named_pipes(pipe_names) as pipes:
+                self.pipe_dict.update(pipes)
+                # start all processes in reverse data-flow order
+                for job in reversed(self._jobs):
+                    self.logger.debug(f"starting {job}")
+                    job.start()
 
+                # join jobs in data-flow order
+                for job in self._jobs:
+                    self.logger.debug(f"waiting for {job}")
+                    job.join()
+
+        # check for exceptions that occurred in child processes
+        caught_exc = False
+        for jobname, exc in sorted(self.exc_dict.items()):
+            for line in exc:
+                self.logger.error(f"exception in {jobname}: {line}")
+                caught_exc = True
+
+        if caught_exc:
+            raise WorkflowError(
+                "detected unhandled exceptions in jobs during workflow-execution"
+            )
+
+        return self
 
     def __str__(self):
         # TODO: make this more comprehensive and beautiful
