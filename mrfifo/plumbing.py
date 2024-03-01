@@ -31,7 +31,7 @@ def create_named_pipes(names):
                 os.remove(fname)
 
 
-def open_named_pipe(path, mode="rt+", buffer_size=1000000):
+def open_named_pipe(path, mode="rt+", buffer_size=1048576): # 524288
     import fcntl
 
     F_SETPIPE_SZ = 1031  # Linux 2.6.35+
