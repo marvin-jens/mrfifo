@@ -222,6 +222,7 @@ def collect(list fifo_names, str fout_name, int chunk_size=10000,
     cdef int k = 0
     cdef size_t n_ins = len(fifo_names)
     cdef size_t n = 0
+    cdef size_t n_out = 0
     cdef str line
     cdef char* buffer
     cdef ssize_t n_read
@@ -233,6 +234,11 @@ def collect(list fifo_names, str fout_name, int chunk_size=10000,
     # sys.stderr.write(f"collecting from {fifo_names} into {fout_name}")
     assert n <= 128
     cdef stdio.FILE *fifos[128]
+    cdef bint fifo_closed[128]
+    for i in range(n_ins):
+        fifo_closed[i] = False
+    
+    cdef size_t drained_fifos = 0
     
     # line buffer
     buffer = <char*>stdlib.malloc(out_buf_size)
@@ -269,16 +275,19 @@ def collect(list fifo_names, str fout_name, int chunk_size=10000,
         stdio.setvbuf(fifos[i], fifo_buffers[i], stdio._IOFBF, in_buf_size)
 
     # main mutiplexing loop
-    while(True):
+    while(drained_fifos < n_ins):
         j = n // chunk_size
         k = j % n_ins # index of fifo
-        # print(f"collection wants to read from {fifo_names[k]}. blocking")
-        n_read = stdio.getline(&buffer, &out_buf_size, fifos[k]) 
-        if n_read <= 0:
-            break
-        
-        # print(f"fifo {k} ({fifo_names[k]}). {n_read} bytes. writing to {fout_name}")
-        stdio.fwrite(buffer, n_read, 1, fout)
+        if not fifo_closed[k]:
+            # print(f"collection wants to read from {fifo_names[k]}. blocking")
+            n_read = stdio.getline(&buffer, &out_buf_size, fifos[k]) 
+            if n_read <= 0:
+                fifo_closed[k] = True
+                drained_fifos += 1
+            else:
+                # print(f"fifo {k} ({fifo_names[k]}). {n_read} bytes. writing to {fout_name}")
+                stdio.fwrite(buffer, n_read, 1, fout)
+                n_out += 1
         n += 1
 
     for i in range(n_ins):
@@ -290,4 +299,4 @@ def collect(list fifo_names, str fout_name, int chunk_size=10000,
     stdio.fclose(fout)
     stdlib.free(out_buf)
 
-    return n # total number of multiplexed lines (excluding header)
+    return n_out # total number of multiplexed lines (excluding header)
