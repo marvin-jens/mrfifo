@@ -48,6 +48,15 @@ def bam_writer(input, output, threads=4, fmt="Sbh"):
     )
 
 
+def null_writer(input, output="/dev/null", threads=4, fmt="Sbh"):
+    """
+    drop-in replacement for bam_writer that just redirects to wherever you like
+    """
+    import os
+
+    return os.system(f"cat {input} > {output}")
+
+
 def distributor(input, outputs, **kw):
     "ensure that the FIFOs are not managed"
     assert type(input) is str
