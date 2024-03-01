@@ -27,13 +27,13 @@ def igzip_reader(inputs, output):
     return n_bytes
 
 
-def bam_reader(input, output, threads=2):
+def bam_reader(input, output, threads=2, mode="Sh"):
     "ensure that the out FIFO is not managed"
     assert type(output) is str
     import os
 
     return os.system(
-        f"samtools view -Sh --no-PG --threads={threads} {input} > {output}"
+        f"samtools view -{mode} --no-PG --threads={threads} {input} > {output}"
     )
 
 
