@@ -61,12 +61,12 @@ def distributor(input, outputs, **kw):
     "ensure that the FIFOs are not managed"
     assert type(input) is str
     logger = logging.getLogger("mrfifo.parts.distributor")
-    logger.info(f"reading from {input}, writing to {outputs} kw={kw}")
+    logger.debug(f"reading from {input}, writing to {outputs} kw={kw}")
 
     from .fast_loops import distribute
 
     res = distribute(fin_name=input, fifo_names=outputs, **kw)
-    logger.info("distribution complete")
+    logger.debug("distribution complete")
     return res
 
 
@@ -78,11 +78,11 @@ def collector(inputs, output, **kw):
     assert type(output) is str
 
     logger = logging.getLogger("mrfifo.parts.collector")
-    logger.info(f"collecting from '{inputs}', writing to '{output}' kw={kw}")
+    logger.debug(f"collecting from '{inputs}', writing to '{output}' kw={kw}")
     from .fast_loops import collect
 
     res = collect(fifo_names=inputs, fout_name=output, **kw)
-    logger.info("collection complete")
+    logger.debug("collection complete")
     return res
 
 
