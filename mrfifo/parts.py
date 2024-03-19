@@ -13,16 +13,29 @@ def igzip_reader(inputs, output):
 
     for fname in inputs:
         logger.info(f"reading from {fname}")
-        in_file = igzip.IGzipFile(fname, "r")
-        while True:
-            block = in_file.read(igzip.READ_BUFFER_SIZE)
-            if block == b"":
-                break
+        try:
+            in_file = igzip.IGzipFile(fname, "r")
+            while True:
+                block = in_file.read(igzip.READ_BUFFER_SIZE)
+                if block == b"":
+                    break
 
-            output.write(block)
-            n_bytes += len(block)
+                output.write(block)
+                n_bytes += len(block)
 
-        in_file.close()
+        except igzip.BadGzipFile:
+            logger.warning(f"Not a proper gzip file: '{fname}'. Assuming text file.")
+            in_file = open(fname, "rb")
+            while True:
+                block = in_file.read(igzip.READ_BUFFER_SIZE)
+                if block == b"":
+                    break
+
+                output.write(block)
+                n_bytes += len(block)
+
+        finally:
+            in_file.close()
 
     return n_bytes
 
