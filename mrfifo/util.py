@@ -14,6 +14,9 @@ class CountDict:
             if type(o) is CountDict:
                 self.add_other_stats(o)
 
+    # @staticmethod
+    # def from_list_of_dicts(cls, dlist):
+
     def count(self, key, inc=1):
         self.stats[key] += inc
 

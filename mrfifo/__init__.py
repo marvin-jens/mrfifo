@@ -73,6 +73,15 @@ class FIFO:
         return f"FIFO({self.mode} names={self.get_names()}) n={self.n}"
 
 
+class ITER(object):
+    def __init__(self, iterable):
+        self.iterable = iterable
+        self.it = iter(self.iterable)
+
+    def get(self):
+        return next(self.it)  # this will eventually raise StopIteration
+
+
 def fifo_routed(
     f, pass_internals=False, fifo_name_format={}, _manage_fifos=True, **kwargs
 ):
@@ -86,6 +95,10 @@ def fifo_routed(
             if fifo_name_format:
                 v = v._format_name(fifo_name_format)
             fifo_vars[k] = v
+        elif type(v) is ITER:
+            # replace the ITER object with whatever is returned at the current iteration
+            # this may raise a StopIteration
+            kw[k] = v.get()
         else:
             kw[k] = v
 

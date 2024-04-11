@@ -5,11 +5,6 @@
 Must include everything that is needed for SPACEMAKE 2.0 (aka drop-dropseq), but also come with 
 sufficient examples & docs to allow others to re-use in other scenarios.
 
-  * look into dropping numpy requirement
-  * test-cases for SAM/BAM/CRAM input w header handling
-  * add examples that use mp primitives for shared state w low bandwidth requirements
-  * minimal sanity checking to detect stale inputs/outputs that would cause dead-locked workflows,
-      as well as violations of the point-to-point principle which would lead to undefined behaviour.
   * expanded documentation (split-by UMI or CB tag)
   * one round of adding doc-strings and auto-generating reference docs (sphinx?)
 

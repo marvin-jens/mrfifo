@@ -420,6 +420,52 @@ def test_BAM_creation(n=2, chunk_size=1):
     print(str(w))
 
 
+def test_iterate(n=2, chunk_size=1):
+
+    inputs = [["test_data/simple.txt.gz"], ["test_data/simple.txt.gz"]]
+    params = [{'barcode' : 'AAA'}, {'barcode' : 'AAC'}]
+
+    w = (
+        mf.Workflow("iterate")
+        .iterate(
+            mf.Workflow("restarting_input")
+            .gz_reader(inputs=mf.ITER(inputs))
+            .distribute(
+                input=mf.FIFO("input_text", "rt"),
+                outputs=mf.FIFO("dist{n}", "wt", n=n),
+                chunk_size=chunk_size,
+            )
+            .workers(
+                input=mf.FIFO("dist{n}", "rt"),
+                output=mf.FIFO("out{n}", "wt"),
+                func=turn_to_SAM,
+                n=n,
+                **kw=mf.ITER(params),
+            ),
+            keep_open = r"out\d+"
+        )
+        .collect(
+            inputs=mf.FIFO("out{n}", "rt", n=n),
+            custom_header=mf.util.make_SAM_header(),
+            #     output="test.sam",
+            #     chunk_size=chunk_size,
+            # )
+            output=mf.FIFO("out_sam", "wt"),  # "test.sam",
+            chunk_size=chunk_size,
+        )
+        .funnel(
+            input=mf.FIFO("out_sam", "rt"),
+            output="test_data/new.bam",
+            _manage_fifos=False,
+            func=mf.parts.bam_writer,
+            fmt="Sbh",
+        )
+        .run()
+    )
+    print(str(w))
+
+
+
 if __name__ == "__main__":
     import logging
 
