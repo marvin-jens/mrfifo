@@ -209,7 +209,7 @@ def distribute_by_substr(str fin_name, list fifo_names, dict sub_lookup,
 
 def collect(list fifo_names, str fout_name, int chunk_size=10000, 
             size_t in_buf_size=2**19, size_t out_buf_size=2**20,
-            header_fifo="", custom_header=None):
+            header_fifo="", custom_header=None, int n_reopen_inputs=1):
 
     if header_fifo == 0:
         # special mode: use the first fifo name for header data 
@@ -234,11 +234,10 @@ def collect(list fifo_names, str fout_name, int chunk_size=10000,
     # sys.stderr.write(f"collecting from {fifo_names} into {fout_name}")
     assert n <= 128
     cdef stdio.FILE *fifos[128]
-    cdef bint fifo_closed[128]
-    for i in range(n_ins):
-        fifo_closed[i] = False
+    cdef bint[128] fifo_closed
     
     cdef size_t drained_fifos = 0
+    cdef int n_loop = 0
     
     # line buffer
     buffer = <char*>stdlib.malloc(out_buf_size)
@@ -268,31 +267,37 @@ def collect(list fifo_names, str fout_name, int chunk_size=10000,
         # all header data has been read! close this fifo's reading end
         stdio.fclose(fheader)
 
-    # now prepare input from all the demuxed fifos
-    for i in range(n_ins):
-        fifo_buffers[i] = <char*>stdlib.malloc(in_buf_size)
-        fifos[i] = stdio.fopen(fifo_names[i].encode('utf-8'), 'r')
-        stdio.setvbuf(fifos[i], fifo_buffers[i], stdio._IOFBF, in_buf_size)
+    for n_loop in range(n_reopen_inputs):
+        #print(f"opening the input fifos for the {n_loop}th time: {fifo_names}")
+        # now prepare input from all the demuxed fifos
+        for i in range(n_ins):
+            fifo_buffers[i] = <char*>stdlib.malloc(in_buf_size)
+            fifos[i] = stdio.fopen(fifo_names[i].encode('utf-8'), 'r')
+            stdio.setvbuf(fifos[i], fifo_buffers[i], stdio._IOFBF, in_buf_size)
 
-    # main mutiplexing loop
-    while(drained_fifos < n_ins):
-        j = n // chunk_size
-        k = j % n_ins # index of fifo
-        if not fifo_closed[k]:
-            # print(f"collection wants to read from {fifo_names[k]}. blocking")
-            n_read = stdio.getline(&buffer, &out_buf_size, fifos[k]) 
-            if n_read <= 0:
-                fifo_closed[k] = True
-                drained_fifos += 1
-            else:
-                # print(f"fifo {k} ({fifo_names[k]}). {n_read} bytes. writing to {fout_name}")
-                stdio.fwrite(buffer, n_read, 1, fout)
-                n_out += 1
-        n += 1
+        drained_fifos = 0
+        for i in range(n_ins):
+            fifo_closed[i] = False
 
-    for i in range(n_ins):
-        stdio.fclose(fifos[i])
-        stdlib.free(fifo_buffers[i])
+        # main mutiplexing loop
+        while(drained_fifos < n_ins):
+            j = n // chunk_size
+            k = j % n_ins # index of fifo
+            if not fifo_closed[k]:
+                # print(f"collection wants to read from {fifo_names[k]}. blocking")
+                n_read = stdio.getline(&buffer, &out_buf_size, fifos[k]) 
+                if n_read <= 0:
+                    fifo_closed[k] = True
+                    drained_fifos += 1
+                else:
+                    # print(f"fifo {k} ({fifo_names[k]}). {n_read} bytes. writing to {fout_name}")
+                    stdio.fwrite(buffer, n_read, 1, fout)
+                    n_out += 1
+            n += 1
+
+        for i in range(n_ins):
+            stdio.fclose(fifos[i])
+            stdlib.free(fifo_buffers[i])
 
     # free the line buffer, close the output, and free the output buffer
     stdlib.free(buffer)

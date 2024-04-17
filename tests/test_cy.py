@@ -47,9 +47,12 @@ def pass_through(
     return i
 
 
-def turn_to_SAM(input, output, **kwargs):
+def turn_to_SAM(input, output, barcode=None, **kwargs):
     sam_line = "{qname}\t4\t*\t0\t0\t*\t*\t0\t0\t{seq}\t{qual}\t{tags}\n"
     tags = "RG:Z:A"
+    if barcode:
+        tags += f"\tBC:Z:{barcode}"
+
     for line in input:
         i = int(line)
         qname = f"read_{i}"
@@ -423,13 +426,13 @@ def test_BAM_creation(n=2, chunk_size=1):
 def test_iterate(n=2, chunk_size=1):
 
     inputs = [["test_data/simple.txt.gz"], ["test_data/simple.txt.gz"]]
-    params = [{'barcode' : 'AAA'}, {'barcode' : 'AAC'}]
+    settings = [{"barcode": "AAA"}, {"barcode": "AAC"}]
 
-    w = (
-        mf.Workflow("iterate")
-        .iterate(
-            mf.Workflow("restarting_input")
-            .gz_reader(inputs=mf.ITER(inputs))
+    w = mf.Workflow("iterate")
+    for input, params in zip(inputs, settings):
+        (
+            w.subworkflow(f"input_loop.{params['barcode']}")
+            .gz_reader(inputs=input)
             .distribute(
                 input=mf.FIFO("input_text", "rt"),
                 outputs=mf.FIFO("dist{n}", "wt", n=n),
@@ -440,12 +443,14 @@ def test_iterate(n=2, chunk_size=1):
                 output=mf.FIFO("out{n}", "wt"),
                 func=turn_to_SAM,
                 n=n,
-                **kw=mf.ITER(params),
-            ),
-            keep_open = r"out\d+"
+                **params,
+            )
         )
-        .collect(
+
+    (
+        w.collect(
             inputs=mf.FIFO("out{n}", "rt", n=n),
+            n_reopen_inputs=len(inputs),
             custom_header=mf.util.make_SAM_header(),
             #     output="test.sam",
             #     chunk_size=chunk_size,
@@ -463,7 +468,6 @@ def test_iterate(n=2, chunk_size=1):
         .run()
     )
     print(str(w))
-
 
 
 if __name__ == "__main__":
@@ -484,4 +488,5 @@ if __name__ == "__main__":
     # test_header_fifo()
     # test_bam_reconstruct()
     # test_fancy_counter()
-    test_BAM_creation()
+    # test_BAM_creation()
+    test_iterate()

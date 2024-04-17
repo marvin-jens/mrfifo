@@ -69,17 +69,19 @@ class FIFO:
             f.close()
             self.logger.debug(f"done closing {f}")
 
+        self.file_objects = []
+
     def __repr__(self):
         return f"FIFO({self.mode} names={self.get_names()}) n={self.n}"
 
 
-class ITER(object):
-    def __init__(self, iterable):
-        self.iterable = iterable
-        self.it = iter(self.iterable)
+# class ITER(object):
+#     def __init__(self, iterable):
+#         self.iterable = iterable
+#         self.it = iter(self.iterable)
 
-    def get(self):
-        return next(self.it)  # this will eventually raise StopIteration
+#     def get(self):
+#         return next(self.it)  # this will eventually raise StopIteration
 
 
 def fifo_routed(
@@ -95,10 +97,10 @@ def fifo_routed(
             if fifo_name_format:
                 v = v._format_name(fifo_name_format)
             fifo_vars[k] = v
-        elif type(v) is ITER:
-            # replace the ITER object with whatever is returned at the current iteration
-            # this may raise a StopIteration
-            kw[k] = v.get()
+        # elif type(v) is ITER:
+        #     # replace the ITER object with whatever is returned at the current iteration
+        #     # this may raise a StopIteration
+        #     kw[k] = v.get()
         else:
             kw[k] = v
 
@@ -171,6 +173,7 @@ class Workflow:
         self.job_count_by_pattern = defaultdict(int)
 
         self._jobs = []
+        self._subs = []
 
         self._fifo_readers = defaultdict(list)
         self._fifo_writers = defaultdict(list)
@@ -183,17 +186,19 @@ class Workflow:
         self.result_dict = self.manager.dict()
         self.exc_dict = self.manager.dict()
 
-    def register_fifos(self, fifos, job_name):
+    def register_fifos(
+        self, fifos, job_name, n_reopen_inputs=1, n_reopen_outputs=1, **kwargs
+    ):
         n_readers = 0
         n_writers = 0
         for f in fifos:
             for name in f.get_names():
                 if f.is_reader():
-                    self._fifo_balance[name] += 1
+                    self._fifo_balance[name] += n_reopen_inputs
                     self._fifo_readers[name].append(job_name)
                     n_readers += 1
                 else:
-                    self._fifo_balance[name] -= 1
+                    self._fifo_balance[name] -= n_reopen_outputs
                     self._fifo_writers[name].append(job_name)
                     n_writers += 1
 
@@ -250,7 +255,7 @@ class Workflow:
         )
 
         n_readers, n_writers = self.register_fifos(
-            fifo_vars.values(), job_name=job_name
+            fifo_vars.values(), job_name=job_name, **kwargs
         )
         self.logger.debug(
             f"add_job job={job} n_readers={n_readers} n_writers={n_writers} fifo_vars={fifo_vars}"
@@ -268,10 +273,82 @@ class Workflow:
 
         return self
 
+    def subworkflow(self, name="subworkflow"):
+        sub = Workflow(name)
+        # sub-workflows share the plumbing
+        sub.pipe_dict = self.pipe_dict
+        self._subs.append(sub)
+        self._jobs.append(sub)
+
+        return sub
+
     # presets/short-hands for more readable workflow compositions
     def reader(self, *argc, job_name="{workflow}.reader{n}", **kwargs):
-
         return self.add_job(*argc, job_name=job_name, assert_n_writer_ge=1, **kwargs)
+
+    def run(self, dry_run=False):
+        # shared plumbing between main and sub-workflows
+        for sub in self._subs:
+            for name, jobnames in sub._fifo_readers.items():
+                self._fifo_readers[name].extend(jobnames)
+
+            for name, jobnames in sub._fifo_writers.items():
+                self._fifo_writers[name].extend(jobnames)
+
+            for name, bal in sub._fifo_balance.items():
+                self._fifo_balance[name] += bal
+
+        # gather all named pipes that are required
+        pipe_names = self.get_pipe_list()
+        self.logger.debug(f"pipe_names={pipe_names}")
+        self.check()
+        if not dry_run:
+            with plumbing.create_named_pipes(pipe_names) as pipes:
+                self.pipe_dict.update(pipes)
+                # start all processes in reverse data-flow order
+                for job in reversed(self._jobs):
+                    if type(job) is Workflow:
+                        sub = job
+                        # we have a sub-workflow!
+                        for job in reversed(sub._jobs):
+                            job.start()
+
+                        # join jobs in data-flow order
+                        for job in sub._jobs:
+                            job.join()
+                    else:
+                        self.logger.debug(f"starting {job}")
+                        job.start()
+
+                # join jobs in data-flow order
+                for job in self._jobs:
+                    self.logger.debug(f"waiting for {job}")
+                    job.join()
+
+        # check for exceptions that occurred in child processes
+        caught_exc = False
+        for jobname, exc in sorted(self.exc_dict.items()):
+            for line in exc:
+                self.logger.error(f"exception in {jobname}: {line}")
+                caught_exc = True
+
+        if caught_exc:
+            raise WorkflowError(
+                "detected unhandled exceptions in jobs during workflow-execution"
+            )
+
+        return self
+
+    def __str__(self):
+        # TODO: make this more comprehensive and beautiful
+        buf = [f"Workflow({self.name})"]
+        for i, job in self._fifo_readers.items():
+            buf.append(f"I:{i} -> J:{job}")
+
+        for o, job in self._fifo_writers.items():
+            buf.append(f"J:{job} -> O:{o}")
+
+        return "\n".join(buf)
 
     def gz_reader(
         self,
@@ -417,46 +494,3 @@ class Workflow:
             )
 
         return self
-
-    def run(self, dry_run=False):
-        # gather all named pipes that are required
-        pipe_names = self.get_pipe_list()
-        self.logger.debug(f"pipe_names={pipe_names}")
-        self.check()
-        if not dry_run:
-            with plumbing.create_named_pipes(pipe_names) as pipes:
-                self.pipe_dict.update(pipes)
-                # start all processes in reverse data-flow order
-                for job in reversed(self._jobs):
-                    self.logger.debug(f"starting {job}")
-                    job.start()
-
-                # join jobs in data-flow order
-                for job in self._jobs:
-                    self.logger.debug(f"waiting for {job}")
-                    job.join()
-
-        # check for exceptions that occurred in child processes
-        caught_exc = False
-        for jobname, exc in sorted(self.exc_dict.items()):
-            for line in exc:
-                self.logger.error(f"exception in {jobname}: {line}")
-                caught_exc = True
-
-        if caught_exc:
-            raise WorkflowError(
-                "detected unhandled exceptions in jobs during workflow-execution"
-            )
-
-        return self
-
-    def __str__(self):
-        # TODO: make this more comprehensive and beautiful
-        buf = [f"Workflow({self.name})"]
-        for i, job in self._fifo_readers.items():
-            buf.append(f"I:{i} -> J:{job}")
-
-        for o, job in self._fifo_writers.items():
-            buf.append(f"J:{job} -> O:{o}")
-
-        return "\n".join(buf)
