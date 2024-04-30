@@ -1,2 +1,16 @@
 [build-system]
 requires = ["setuptools", "wheel", "Cython"]
+
+[project]
+dependencies = [
+  'setproctitle',
+  'isal',
+  'pandas'
+]
+
+[project.optional-dependencies]
+tests = [
+  'pytest',
+  'pytest-cov',
+  'coverage'
+]

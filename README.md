@@ -23,7 +23,12 @@ should do the trick.
 
 # Example workflow
 
-Here's an instructive example that shows off several of the main features. The following code decompresses a `fastq.gz` file, distributes the FASTQ lines to four separate worker processes running in parallel. These workers execute `line_counter` which does nothing but count the lines, and report the count by *writing it to an output* file. Finally, the outputs are `collected` and passed on to `add_counts`, a second bit of user-defined code that adds up the counts to arrive at a grand total.
+Here's an instructive example that shows off several of the main features. The following code decompresses a `BAM` file, distributes the SAM lines to four separate worker processes running in parallel, and then re-assembles a new BAM with the exact same content.
+The workers execute the function `pass_through` which iterates over its input, counts the number of lines (SAM records) it encounters, and writes the line to an output. After exhausting the input, the function returns the count and exits. 
+The magic happens before and after the calls to `pass_through`. For each of the calls defining the workflow (called "parts" of the workflow), a separate `multiprocessing.Process` is started. In fact, in reverse order, so starting with the `.funnel()` and then working its way up to the `.BAM_reader()`. However, before any processes get started, the workflow object figures out how many named pipes it needs to create (in a safe temp directory), by way of the `mf.FIFO` objects being created and passed into each part. Unless, explicitly specified (using `manage_pipes=False`), these pipes are additionally managed by mrfifo, to avoid deadlocks. For instance, `pass_through` is already called with two opened file objects, one for reading and one for writing, which have been created by mrfifo to connect it with the `.distribute` part on the input side and the `.collect` part on the output side.
+Note that return values and exceptions (including tracebacks) are automatically captured by the workflow object to simplify your program and to avoid hanging processes waiting for a pipe to be closed.
+A little extra is the BAM header. This gets detected and separated from the bulk of the data by the `.distribute` part and is sent to its own FIFO named `header`. The header thus bypasses the workers and is merged with their outputs only at the `.collect` part. However, the header could alternatively have been broadcast to all workers as well. See the documentation for more details.
+
 
 ```python
 
