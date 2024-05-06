@@ -10,13 +10,17 @@ from libc.string cimport strstr
 def distribute(str fin_name, list fifo_names, int chunk_size=10000, 
                size_t in_buf_size=2**20, size_t out_buf_size=2**19, 
                header_detect_func=None, header_fifo="", 
-               header_broadcast=False):
+               header_broadcast=False, size_t _buffer_size=0, **kw):
 
     if header_fifo == 0:
         # special mode: use the first fifo name for header data and the other
         # as round-robin outputs as usual
         header_fifo = fifo_names[0]
         fifo_names = fifo_names[1:]
+
+    if _buffer_size > 0:
+        in_buf_size = _buffer_size
+        out_buf_size = _buffer_size
 
     cdef size_t i = 0
     cdef size_t j = 0
@@ -101,14 +105,18 @@ def distribute(str fin_name, list fifo_names, int chunk_size=10000,
 def distribute_by_substr(str fin_name, list fifo_names, dict sub_lookup,
                          size_t sub_size, bytes sub_lead=b"\tCB:Z:", 
                          size_t in_buf_size=2**20, size_t out_buf_size=2**19, 
-                         header_detect_func=None, header_fifo="", 
-                         header_broadcast=False):
+                         header_detect_func=None, header_fifo="",
+                         header_broadcast=False, _buffer_size=0, **kw):
 
     if header_fifo == 0:
         # special mode: use the first fifo name for header data and the other
         # as round-robin outputs as usual
         header_fifo = fifo_names[0]
         fifo_names = fifo_names[1:]
+
+    if _buffer_size > 0:
+        in_buf_size = _buffer_size
+        out_buf_size = _buffer_size
 
     cdef size_t i = 0
     cdef ssize_t j = 0
@@ -209,13 +217,17 @@ def distribute_by_substr(str fin_name, list fifo_names, dict sub_lookup,
 
 def collect(list fifo_names, str fout_name, int chunk_size=10000, 
             size_t in_buf_size=2**19, size_t out_buf_size=2**20,
-            header_fifo="", custom_header=None, int n_reopen_inputs=1):
+            header_fifo="", _buffer_size=0, custom_header=None, int n_reopen_inputs=1, **kw):
 
     if header_fifo == 0:
         # special mode: use the first fifo name for header data 
         # and the other as round-robin inputs as usual
         header_fifo = fifo_names[0]
         fifo_names = fifo_names[1:]
+
+    if _buffer_size > 0:
+        in_buf_size = _buffer_size
+        out_buf_size = _buffer_size
 
     cdef int i = 0
     cdef int j = 0

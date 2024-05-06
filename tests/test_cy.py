@@ -276,7 +276,7 @@ def test_header_fifo():
     assert w.result_dict["BAM_header_fifo.funnel0"] == (5, 0)
 
 
-def test_bam_reconstruct(chunk_size=1, n=4):
+def test_bam_reconstruct(chunk_size=1, n=64):
     w = (
         mf.Workflow("BAM_reconstruct")
         .BAM_reader(input="test_data/tiny_test.bam")
@@ -486,7 +486,7 @@ if __name__ == "__main__":
     # test_dist_work_collect_funnel()
     # test_header_broadcast()
     # test_header_fifo()
-    # test_bam_reconstruct()
+    test_bam_reconstruct()
     # test_fancy_counter()
     # test_BAM_creation()
-    test_iterate()
+    # test_iterate()

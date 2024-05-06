@@ -4,130 +4,15 @@ import logging
 from functools import wraps
 from collections import defaultdict
 
-from . import parallel
 from . import plumbing
 from . import parts
 from . import util
 
+from .plumbing import FIFO, fifo_routed
+
 
 class WorkflowError(Exception):
     pass
-
-
-class FIFO:
-    def __init__(self, name, mode, n=None):
-        self.logger = logging.getLogger(f"mrfifo.FIFO.{name}")
-        self.name = name
-        self.mode = mode
-        self.n = n
-        self.file_objects = []
-
-        assert mode[0] in ["r", "w"]
-
-    def _format_name(self, context):
-        return FIFO(self.name.format(**context), self.mode, n=self.n)
-
-    def is_collection(self):
-        return self.n is not None
-
-    def is_reader(self):
-        return self.mode[0] == "r"
-
-    def get_names(self, **kw):
-        if self.is_collection():
-            return [self.name.format(n=i, **kw) for i in range(self.n)]
-        else:
-            return [
-                self.name,
-            ]
-
-    def open(self, pipe_dict, manage_fifos=True, **kw):
-        from mrfifo.plumbing import open_named_pipe
-
-        if manage_fifos:
-            self.file_objects = [
-                open_named_pipe(pipe_dict[name], mode=self.mode)
-                for name in self.get_names(**kw)
-            ]
-
-            if self.is_collection():
-                return self.file_objects
-            else:
-                return self.file_objects[0]
-        else:
-            # unmanaged, return paths to fifos instead of open files
-            paths = [pipe_dict[name] for name in self.get_names(**kw)]
-            if self.is_collection():
-                return paths
-            else:
-                return paths[0]
-
-    def close(self):
-        for f in self.file_objects:
-            self.logger.debug(f"closing {f}")
-            f.flush()
-            f.close()
-            self.logger.debug(f"done closing {f}")
-
-        self.file_objects = []
-
-    def __repr__(self):
-        return f"FIFO({self.mode} names={self.get_names()}) n={self.n}"
-
-
-# class ITER(object):
-#     def __init__(self, iterable):
-#         self.iterable = iterable
-#         self.it = iter(self.iterable)
-
-#     def get(self):
-#         return next(self.it)  # this will eventually raise StopIteration
-
-
-def fifo_routed(
-    f, pass_internals=False, fifo_name_format={}, _manage_fifos=True, **kwargs
-):
-    from functools import wraps
-
-    fifo_vars = {}
-    kw = {}
-    for k, v in kwargs.items():
-        # print(f"{k} : {v} {type(v)}")
-        if type(v) is FIFO:
-            if fifo_name_format:
-                v = v._format_name(fifo_name_format)
-            fifo_vars[k] = v
-        # elif type(v) is ITER:
-        #     # replace the ITER object with whatever is returned at the current iteration
-        #     # this may raise a StopIteration
-        #     kw[k] = v.get()
-        else:
-            kw[k] = v
-
-    @wraps(f)
-    def wrapper(
-        result_dict={}, pipe_dict={}, exc_dict={}, job_name="job", args=(), **kwds
-    ):
-        kwargs = kw.copy()
-        kwargs.update(**kwds)
-
-        for target, fifo in fifo_vars.items():
-            kwargs[target] = fifo.open(pipe_dict, manage_fifos=_manage_fifos)
-
-        with parallel.ExceptionLogging(name=job_name, exc_dict=exc_dict) as el:
-            try:
-                if pass_internals:
-                    kwargs["_job_name"] = job_name
-                    kwargs["_logger"] = el.logger
-
-                res = f(*args, **kwargs)
-                result_dict[job_name] = res
-
-            finally:
-                for fifo in fifo_vars.values():
-                    fifo.close()
-
-    return wrapper, fifo_vars
 
 
 class Job:
@@ -152,9 +37,9 @@ class Job:
             ),
         )
 
-    def start(self):  # , pipes):
+    def start(self):
         assert self.p is None
-        self.p = self.create()  # pipes)
+        self.p = self.create()
         self.p.start()
 
     def join(self):
@@ -166,9 +51,10 @@ class Job:
 
 
 class Workflow:
-    def __init__(self, name, n=4):
+    def __init__(self, name, n=4, total_pipe_buffer_MB=16):
         self.name = name
         self.n = n
+        self.total_pipe_buffer = int(total_pipe_buffer_MB * 1048576)
         self.logger = logging.getLogger(f"{self.name}.Workflow")
         self.job_count_by_pattern = defaultdict(int)
 
@@ -303,7 +189,9 @@ class Workflow:
         self.logger.debug(f"pipe_names={pipe_names}")
         self.check()
         if not dry_run:
-            with plumbing.create_named_pipes(pipe_names) as pipes:
+            with plumbing.create_named_pipes(
+                pipe_names, total_pipe_buffer=self.total_pipe_buffer
+            ) as pipes:
                 self.pipe_dict.update(pipes)
                 # start all processes in reverse data-flow order
                 for job in reversed(self._jobs):
@@ -403,6 +291,7 @@ class Workflow:
         header_broadcast=False,
         job_name="{workflow}.dist{n}",
         _manage_fifos=False,
+        pass_internals=True,
         **kwargs,
     ):
 
@@ -413,6 +302,7 @@ class Workflow:
             assert_n_writer_ge=1,
             assert_n_reader_ge=1,
             _manage_fifos=_manage_fifos,
+            pass_internals=pass_internals,
             header_fifo=header_fifo,
             header_detect_func=header_detect_func,
             header_broadcast=header_broadcast,
@@ -441,6 +331,7 @@ class Workflow:
         header_fifo="",
         job_name="{workflow}.collect{n}",
         _manage_fifos=False,
+        pass_internals=True,
         **kwargs,
     ):
 
@@ -452,6 +343,7 @@ class Workflow:
             output=output,
             assert_n_reader_ge=1,
             _manage_fifos=_manage_fifos,
+            pass_internals=pass_internals,
             header_fifo=header_fifo,
             **kwargs,
         )
