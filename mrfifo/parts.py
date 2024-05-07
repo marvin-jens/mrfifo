@@ -83,6 +83,24 @@ def distributor(input, outputs, **kw):
     return res
 
 
+def distribute_by_CB(input, outputs, l_prefix=4, **kw):
+    "ensure that the FIFOs are not managed"
+    assert type(input) is str
+    logger = logging.getLogger("mrfifo.parts.distribute_by_CB")
+    logger.debug(f"reading from {input}, writing to {outputs} kw={kw}")
+
+    from .fast_loops import distribute_by_substr
+    from mrfifo.util import make_CB_dist_map
+
+    d = make_CB_dist_map(r=l_prefix, n=len(outputs))
+    # print(sorted(d.items()))
+    res = distribute_by_substr(
+        fin_name=input, fifo_names=outputs, sub_lookup=d, sub_size=l_prefix, **kw
+    )
+    logger.debug("distribution complete")
+    return res
+
+
 def collector(inputs, output, **kw):
     "ensure that the FIFOs are not managed"
     for inp in inputs:

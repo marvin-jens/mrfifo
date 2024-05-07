@@ -135,7 +135,7 @@ def distribute_by_substr(str fin_name, list fifo_names, dict sub_lookup,
     cdef char* fifo_buffers[128]
     buffer = <char*>stdlib.malloc(in_buf_size)
 
-    assert n <= 128
+    assert n_outs <= 128
     cdef stdio.FILE *fifos[128]
 
     cdef char* stdin_buf = <char*>stdlib.malloc(in_buf_size)
@@ -175,6 +175,7 @@ def distribute_by_substr(str fin_name, list fifo_names, dict sub_lookup,
             stdio.fclose(fheader)
 
     # main distribute loop
+    n = 0
     while(True):
         if n_read == 0:
             # we may have already read a line in the header-detection above!
@@ -198,6 +199,8 @@ def distribute_by_substr(str fin_name, list fifo_names, dict sub_lookup,
         j = sub_lookup.get(sub, -1)
         if j >= 0:
             stdio.fwrite(buffer, n_read, 1, fifos[j % n_outs])
+        else:
+            print(f"unknown sub: {sub}")
 
         n += 1
         n_read = 0

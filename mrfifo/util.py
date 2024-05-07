@@ -1,7 +1,7 @@
 import os
 import sys
 import logging
-from .contrib import __version__, __license__, __author__, __email__
+from mrfifo.contrib import __version__, __license__, __author__, __email__
 
 
 # This should go to 'parts' or a few example implementations
@@ -105,3 +105,31 @@ def make_SAM_header(
 ):
 
     return header_template.format(**locals())
+
+
+def is_header(line):
+    return line.startswith("@")
+
+
+def make_CB_dist_map(r=3, nts="ACGTN", n=4, rnd_seed=455628254, permute=True):
+    from itertools import product
+
+    prefixes = list(product(nts, repeat=r))
+    if permute:
+        from numpy.random import seed, permutation
+
+        seed(rnd_seed)
+        prefixes = permutation(prefixes)
+
+    d = {}
+    i = 0
+    for prefix in prefixes:
+        prefix = "".join(prefix).encode("ascii")
+        d[prefix] = i % n
+        i += 1
+
+    return d
+
+
+if __name__ == "__main__":
+    print(make_CB_dist_map())
