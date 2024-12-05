@@ -220,7 +220,15 @@ def distribute_by_substr(str fin_name, list fifo_names, dict sub_lookup,
 
 def collect(list fifo_names, str fout_name, int chunk_size=10000, 
             size_t in_buf_size=2**19, size_t out_buf_size=2**20,
-            header_fifo="", _buffer_size=0, custom_header=None, int n_reopen_inputs=1, **kw):
+            header_fifo="", _buffer_size=0, custom_header=None, 
+            int n_reopen_inputs=1, 
+            str log_name="mrfifo.collect",
+            size_t log_rate_every_n=0,
+            str log_rate_template="processed {n_out} records ({kps:.1f} / second)", **kw):
+
+    import logging
+    logger = logging.getLogger(log_name)
+    from time import time
 
     if header_fifo == 0:
         # special mode: use the first fifo name for header data 
@@ -281,7 +289,11 @@ def collect(list fifo_names, str fout_name, int chunk_size=10000,
         
         # all header data has been read! close this fifo's reading end
         stdio.fclose(fheader)
+        logger.debug("completely written header")
 
+    T0 = time()
+    t0 = T0
+    logger.debug("entering collect() main loop")
     for n_loop in range(n_reopen_inputs):
         #print(f"opening the input fifos for the {n_loop}th time: {fifo_names}")
         # now prepare input from all the demuxed fifos
@@ -309,6 +321,24 @@ def collect(list fifo_names, str fout_name, int chunk_size=10000,
                     stdio.fwrite(buffer, n_read, 1, fout)
                     n_out += 1
             n += 1
+            if (log_rate_every_n > 0) and (n % log_rate_every_n == 0):
+                t1 = time()
+                dt = t1 - t0
+                dT = t1 - T0
+                t0 = t1
+                kps = 0.001 * log_rate_every_n / dt
+                KPS = 0.001 * n_out / dT
+                logger.info(log_rate_template.format(
+                    n_rate=log_rate_every_n,
+                    n_out=n_out,
+                    M_out=1e-6*n_out,
+                    kps=kps,
+                    KPS=KPS,
+                    mps=0.001 * kps,
+                    MPS=0.001 * KPS,
+                    dt=dt,
+                    dT=dT)
+                )
 
         for i in range(n_ins):
             stdio.fclose(fifos[i])
