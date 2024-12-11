@@ -16,25 +16,30 @@ class WorkflowError(Exception):
 
 
 class Job:
-    def __init__(self, func, result_dict={}, exc_dict={}, pipe_dict={}, name="job"):
+    def __init__(self, func, result_dict={}, exc_dict={}, pipe_dict={}, name="job", _extra_args={}, **kw):
         self.name = name
         self.func = func
         self.result_dict = result_dict
         self.exc_dict = exc_dict
         self.pipe_dict = pipe_dict
         self.p = None
+        self.extra_args = _extra_args
 
     def create(self):
         import multiprocessing as mp
 
+        kw = dict(
+          pipe_dict=self.pipe_dict,
+          result_dict=self.result_dict,
+          exc_dict=self.exc_dict,
+          job_name=self.name
+        )
+        if self.extra_args:
+            kw['_extra_args'] = self.extra_args
+
         return mp.Process(
             target=self.func,
-            kwargs=dict(
-                pipe_dict=self.pipe_dict,
-                result_dict=self.result_dict,
-                exc_dict=self.exc_dict,
-                job_name=self.name,
-            ),
+            kwargs=kw
         )
 
     def start(self):
@@ -138,6 +143,7 @@ class Workflow:
             pipe_dict=self.pipe_dict,
             exc_dict=self.exc_dict,
             name=job_name,
+            **kwargs,
         )
 
         n_readers, n_writers = self.register_fifos(
@@ -317,6 +323,7 @@ class Workflow:
                 func=func,
                 assert_n_reader_ge=1,
                 fifo_name_format={"n": i},
+                _extra_args={'n': i},
                 **kwargs,
             )
 
