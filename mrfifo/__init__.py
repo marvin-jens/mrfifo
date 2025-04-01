@@ -16,7 +16,16 @@ class WorkflowError(Exception):
 
 
 class Job:
-    def __init__(self, func, result_dict={}, exc_dict={}, pipe_dict={}, name="job", _extra_args={}, **kw):
+    def __init__(
+        self,
+        func,
+        result_dict={},
+        exc_dict={},
+        pipe_dict={},
+        name="job",
+        _extra_args={},
+        **kw,
+    ):
         self.name = name
         self.func = func
         self.result_dict = result_dict
@@ -29,18 +38,15 @@ class Job:
         import multiprocessing as mp
 
         kw = dict(
-          pipe_dict=self.pipe_dict,
-          result_dict=self.result_dict,
-          exc_dict=self.exc_dict,
-          job_name=self.name
+            pipe_dict=self.pipe_dict,
+            result_dict=self.result_dict,
+            exc_dict=self.exc_dict,
+            job_name=self.name,
         )
         if self.extra_args:
-            kw['_extra_args'] = self.extra_args
+            kw["_extra_args"] = self.extra_args
 
-        return mp.Process(
-            target=self.func,
-            kwargs=kw
-        )
+        return mp.Process(target=self.func, kwargs=kw)
 
     def start(self):
         assert self.p is None
@@ -315,16 +321,27 @@ class Workflow:
             **kwargs,
         )
 
-    def workers(self, *argc, n=4, func=None, job_name="{workflow}.worker{n}", **kwargs):
+    def workers(
+        self,
+        *argc,
+        n=4,
+        func=None,
+        job_name="{workflow}.worker{n}",
+        pass_extra_args=False,
+        **kwargs,
+    ):
         for i in range(n):
+            kw = kwargs.copy()
+            kw["fifo_name_format"] = {"n": i}
+            if pass_extra_args:
+                kw["_extra_args"] = {"n": i}
+
             self.add_job(
                 *argc,
                 job_name=job_name,
                 func=func,
                 assert_n_reader_ge=1,
-                fifo_name_format={"n": i},
-                _extra_args={'n': i},
-                **kwargs,
+                **kw,
             )
 
         return self
