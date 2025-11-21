@@ -61,7 +61,7 @@ def bam_writer(input, output, threads=4, fmt="Sbh"):
     )
 
 
-def null_writer(input, output="/dev/null", threads=4, fmt="Sbh"):
+def null_writer(input, output="/dev/null", **kw):
     """
     drop-in replacement for bam_writer that just redirects to wherever you like
     """
@@ -69,6 +69,11 @@ def null_writer(input, output="/dev/null", threads=4, fmt="Sbh"):
 
     return os.system(f"cat {input} > {output}")
 
+
+def null_writer_managed(input):
+    for line in input:
+        pass
+    
 
 def distributor(input, outputs, **kw):
     "ensure that the FIFOs are not managed"
