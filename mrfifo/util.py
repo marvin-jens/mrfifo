@@ -131,5 +131,18 @@ def make_CB_dist_map(r=3, nts="ACGTN", n=4, rnd_seed=455628254, permute=True):
     return d
 
 
+def aggregate_dicts(w, pattern="worker", agg_func=sum, dtype=int):
+    import re
+    from collections import defaultdict
+
+    result = defaultdict(dtype)
+    for name, d in w.result_dict.items():
+        if re.search(pattern, name):
+            for k, v in d.items():
+                result[k] = agg_func([v, result[k]])
+
+    return result
+
+
 if __name__ == "__main__":
     print(make_CB_dist_map())
