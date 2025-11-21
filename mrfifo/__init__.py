@@ -294,6 +294,32 @@ class Workflow:
             **kwargs,
         )
 
+    def BAM_writer(
+        self,
+        *argc,
+        job_name="{workflow}.BAM_writer{n}",
+        func=parts.bam_writer,
+        input=FIFO("out_sam", "w"),
+        output="/dev/stdout",
+        threads=4,
+        _manage_fifos=False,
+        fmt=f"ShC",
+        **kwargs,
+    ):
+
+        return self.add_job(
+            *argc,
+            job_name=job_name,
+            func=func,
+            input=input,
+            output=output,
+            threads=threads,
+            fmt=fmt,
+            assert_n_reader_ge=1,
+            _manage_fifos=_manage_fifos,
+            **kwargs,
+        )
+
     def distribute(
         self,
         *argc,
